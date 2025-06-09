@@ -5,11 +5,12 @@ import pennylane as qml
 import argparse
 from torch import nn, optim
 import numpy
+import scipy.io
 from torch_geometric.loader import DataLoader
 
 
 from utils import train, test
-from comm_utils import normalize_data
+from comm_utils import normalize_data, rate_loss
 from data import cfGraphDataset, load_cf_dataset
 
 from model import QGNN
@@ -148,40 +149,45 @@ def main(args):
     
     end = time.time()
     print(f"Total execution time: {end - start:.6f} seconds")
-    total_label = 0
-    num_batch = 0
-    for data in train_loader:
-        total_label += numpy.sum(data.y.detach().numpy())
-        num_batch += data.num_graphs
-    train_label = total_label/num_batch
-
-    total_label = 0
-    num_batch = 0
-    for data in test_loader:
-        total_label += numpy.sum(data.y.detach().numpy())
-        num_batch += data.num_graphs
-    test_label = total_label/num_batch
     
-    plt.rcParams.update({'font.size': 14})
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(range(1, args.epochs+1), training_sinr, label='Training Sum Rate', marker='o', color='b')
-    plt.plot(range(1, args.epochs+1), testing_sinr, label='Testing Sum Rate', marker='s', color='r')
-    # plt.axhline(y=train_label, color='black', linestyle='-', label='Optimal SINR')
-    plt.axhline(y=train_label, color='black', linestyle='-', label='WMMSE')
-
-    plt.title('Unsupervised Setting')
-    plt.xlabel('Epoch')
-    plt.ylabel('SINR')
-    plt.xticks(range(1, args.epochs+1))
-    plt.legend()
-    plt.grid(True)
-    # plt.show()
     
-    plt.tight_layout()
+    eval_loader = DataLoader(test_dataset, batch_size=args.test_size, shuffle=False)
+
+    for data, direct, cross in eval_loader:
+        bs = data.num_graphs
+        M = direct.shape[1]
+        K = data.x.shape[0] // M // bs
+        optimizer.zero_grad()
+
+        output = model(data.x, data.edge_attr, data.edge_index, data.batch) # .reshape(bs, -1)
+        # output = output.reshape(bs,-1)
+        power = output.reshape(bs, M, K)
+        power = torch.mean(power, dim=2)
+        qgnn_rates = rate_loss(power, direct, cross, True).flatten().detach().numpy()
+
+        full = torch.ones_like(power)
+        all_one_rates = rate_loss(full, direct, cross, True).flatten().numpy()
+        
+    opt_rates = opt_rate
+    num_ep = args.test_size
+    min_rate, max_rate = 0, 2
+    y_axis = numpy.arange(0, 1.0, 1/(num_ep+2))
+    qgnn_rates.sort(); all_one_rates.sort(); opt_rates.sort()
+    qgnn_rates = numpy.insert(qgnn_rates, 0, min_rate); qgnn_rates = numpy.insert(qgnn_rates,num_ep+1,max_rate)
+    all_one_rates = numpy.insert(all_one_rates, 0, min_rate); all_one_rates = numpy.insert(all_one_rates,num_ep+1,max_rate)
+    opt_rates = numpy.insert(opt_rates, 0, min_rate); opt_rates = numpy.insert(opt_rates,num_ep+1,max_rate)
+    
+    plt.plot(qgnn_rates, y_axis, label = 'QGNN')
+    # plt.plot(gnn_rates, y_axis, label = 'GNN')
+    plt.plot(opt_rates, y_axis, label = 'Optimal')
+    plt.plot(all_one_rates, y_axis, label = 'Maximum Power')
+    plt.xlabel('Minimum rate [bps/Hz]', {'fontsize':16})
+    plt.ylabel('Empirical CDF', {'fontsize':16})
+    plt.legend(fontsize = 12)
+    plt.grid()
     # plot_path = f"plot_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
     plot_path = f"plot_{timestamp}_{args.graphlet_size}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
-    plt.savefig(os.path.join('../results/fig', plot_path), dpi=300)
+    plt.savefig(os.path.join(result_dir, 'fig', plot_path), dpi=300)
 
     # train_losses = []
     # test_losses = []
