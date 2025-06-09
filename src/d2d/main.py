@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pennylane as qml
 import argparse
 from torch import nn, optim
-import numpy as np
+import numpy
 
 
 from utils import train, test, EarlyStopping
@@ -19,8 +19,8 @@ import time
 
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
-
-result_dir = os.path.join('../results')
+root_dir = '../..'
+result_dir = os.path.join(root_dir, 'results')
 os.makedirs(result_dir, exist_ok=True)
 os.makedirs(os.path.join(result_dir, 'fig'), exist_ok=True)
 os.makedirs(os.path.join(result_dir, 'log'), exist_ok=True)
@@ -90,9 +90,10 @@ def main(args):
         'twodesign': (0, args.num_ent_layers, 1, 2)
     }
 
-    # Load dataset    
-    train_dataset = d2dGraphDataset(num_samples=args.train_size, num_D2D=args.num_nodes, p_max=args.power, n0=args.noise, seed=args.seed)
-    test_dataset = d2dGraphDataset(num_samples=args.test_size, num_D2D=args.num_nodes, p_max=args.power, n0=args.noise, seed=args.seed)
+    # Load dataset  
+    var_noise = 1/10**(args.noise/10)  # Convert dB to linear scale  
+    train_dataset = d2dGraphDataset(num_samples=args.train_size, num_D2D=args.num_nodes, p_max=args.power, n0=var_noise, seed=args.seed)
+    test_dataset = d2dGraphDataset(num_samples=args.test_size, num_D2D=args.num_nodes, p_max=args.power, n0=var_noise, seed=args.seed)
 
 
     # if task_type != 'graph':
@@ -124,44 +125,54 @@ def main(args):
     training_sinr = []
     testing_sinr = []
     model.train()
+    start = time.time()
+    print(f"Training model with {args.graphlet_size} graphlet size with {args.epochs} epochs, "
+          f"learning rate {args.lr}, step size {args.step_size}, and gamma {args.gamma}.")
     for epoch in range(args.epochs):
         # Train the model
-        avg_train_loss, avg_train_sinr = train(model, train_loader, optimizer)
+        avg_train_loss, avg_train_sinr = train(model, train_loader, optimizer, var_noise)
         scheduler.step()
-        avg_test_sinr = test(model, test_loader)
+        avg_test_sinr = test(model, test_loader,var_noise)
         training_sinr.append(avg_train_sinr)
         testing_sinr.append(avg_test_sinr)
-        print(f"Epoch {epoch + 1}/{num_epochs}, Training loss: {-avg_train_loss:.4f}, Training SINR: {training_sinr[-1]:.4f}, Testing SINR: {testing_sinr[-1]:.4f}")
+        print(f"Epoch {epoch + 1}/{args.epochs}, Training loss: {-avg_train_loss:.4f}, Training SINR: {training_sinr[-1]:.4f}, Testing SINR: {testing_sinr[-1]:.4f}")
 
+    end = time.time()
+    print(f"Total execution time: {end - start:.6f} seconds")
     total_label = 0
     num_batch = 0
     for data in train_loader:
-        total_label += numpy.sum(data.y.detach().numpy())/data.num_graphs
-        num_batch += 1
+        total_label += numpy.sum(data.y.detach().numpy())
+        num_batch += data.num_graphs
     train_label = total_label/num_batch
 
     total_label = 0
     num_batch = 0
     for data in test_loader:
-        total_label += numpy.sum(data.y.detach().numpy())/data.num_graphs
-        num_batch += 1
+        total_label += numpy.sum(data.y.detach().numpy())
+        num_batch += data.num_graphs
     test_label = total_label/num_batch
     
     plt.rcParams.update({'font.size': 14})
 
     plt.figure(figsize=(10, 6))
-    plt.plot(range(1, num_epochs+1), training_sinr, label='Training Sum Rate', marker='o', color='b')
-    plt.plot(range(1, num_epochs+1), testing_sinr, label='Testing Sum Rate', marker='s', color='r')
+    plt.plot(range(1, args.epochs+1), training_sinr, label='Training Sum Rate', marker='o', color='b')
+    plt.plot(range(1, args.epochs+1), testing_sinr, label='Testing Sum Rate', marker='s', color='r')
     # plt.axhline(y=train_label, color='black', linestyle='-', label='Optimal SINR')
     plt.axhline(y=train_label, color='black', linestyle='-', label='WMMSE')
 
     plt.title('Unsupervised Setting')
     plt.xlabel('Epoch')
     plt.ylabel('SINR')
-    plt.xticks(range(1, num_epochs+1))
+    plt.xticks(range(1, args.epochs+1))
     plt.legend()
     plt.grid(True)
-    plt.show()
+    # plt.show()
+    
+    plt.tight_layout()
+    # plot_path = f"plot_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
+    plot_path = f"plot_{timestamp}_{args.graphlet_size}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
+    plt.savefig(os.path.join(result_dir,'fig', plot_path), dpi=300)
 
     # train_losses = []
     # test_losses = []

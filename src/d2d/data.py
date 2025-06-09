@@ -11,7 +11,7 @@ class d2dGraphDataset(Dataset):
         self.num_samples = num_samples
         self.num_D2D = num_D2D
         self.p_max = p_max  # Transmit power
-        self.n0 = 1/10**(n0/10)  # Noise power
+        self.n0 = n0  # Noise power
         self.seed = seed
 
         # Generate the dataset (graphs and labels)

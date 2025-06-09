@@ -53,10 +53,11 @@ def star_subgraph(adjacency_matrix, subgraph_size=4):
 
     return subgraph_indices
 
-def train(model, train_loader, optimizer, setting='supervised'):
+def train(model, train_loader, optimizer, var):
     model.train()
     total_loss = 0
     total_rate = 0
+    total_graph = 0
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     for data in train_loader:    
@@ -79,14 +80,16 @@ def train(model, train_loader, optimizer, setting='supervised'):
             sum_rate = sum_weighted_rate(channel_matrices, power_new, weight_sumrates, var)
         total_rate += sum_rate.item()
         total_loss += loss.item()
+        total_graph += data.num_graphs
 
-    return total_loss / len(train_loader), total_rate / len(train_loader)
+    return total_loss / total_graph, total_rate / total_graph
 
 
-def test(model, test_loader):
+def test(model, test_loader, var):
     model.eval()
     total_loss = 0
     total_rate = 0
+    total_graph = 0
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     with torch.no_grad():
         for data in test_loader: 
@@ -98,8 +101,9 @@ def test(model, test_loader):
             output = output.reshape(bs,-1,1)
             sum_rate = sum_weighted_rate(channel_matrices, output, weight_sumrates, var)
             total_rate += sum_rate.item()
+            total_graph += data.num_graphs
 
-    return total_rate / len(test_loader)
+    return total_rate / total_graph
 
 
 # def quantize_output(output, num_levels=4):
@@ -124,6 +128,7 @@ def test(model, test_loader):
 
 
 def sum_weighted_rate(h, p, w, n0):
+    # n0 = 1/10**(n0/10)
     all_signal = torch.square(h.unsqueeze(1) * p)  # shape: (B, N, N)
     des_signal = torch.diagonal(all_signal, dim1=1, dim2=2)
     rx_signal = torch.sum(all_signal, dim=1)
