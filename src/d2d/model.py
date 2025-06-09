@@ -193,7 +193,11 @@ class QGNN(nn.Module):
                 center, *neighbors = sub
 
                 n_feat = node_features[sub] 
-                edge_idxs = [ idx_dict[(center, int(n))] for n in neighbors ]
+                # edge_idxs = [ idx_dict[(center, int(n))] for n in neighbors ]
+                edge_idxs = [
+                    idx_dict[(min(center, int(n)), max(center, int(n)))] 
+                    for n in neighbors 
+                ]
                 e_feat    = edge_features[edge_idxs]  
                 inputs = torch.cat([e_feat, n_feat], dim=0)        
 

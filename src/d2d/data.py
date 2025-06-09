@@ -37,10 +37,14 @@ class d2dGraphDataset(Dataset):
         x = torch.cat([x1, x2], dim=1)  # shape: [num_D2D, 2]
         # Fully connected graph
         edge_index = torch.tensor([
-            [i, j] for i in range(self.num_D2D) for j in range(self.num_D2D) if i != j
+            # [i, j] for i in range(self.num_D2D) for j in range(self.num_D2D) if i != j
+            [i, j] for i in range(self.num_D2D) for j in range(i+1, self.num_D2D)
         ], dtype=torch.long).T  # shape: [2, num_edges]
 
-        edge_attr = torch.tensor(H[edge_index[0], edge_index[1]][:, None], dtype=torch.float32)
+        H = torch.tensor(H, dtype=torch.float32)
+        # edge_attr = torch.tensor(H[edge_index[0], edge_index[1]][:, None], dtype=torch.float32)
+        edge_attr = torch.cat([H[edge_index[0], edge_index[1]][:, None], H[edge_index[1], edge_index[0]][:, None]], dim=-1)
+        #  torch.tensor(H[edge_index[0], edge_index[1]][:, None], dtype=torch.float32)
 
         y = torch.tensor(self.labels[idx], dtype=torch.float32)
 
