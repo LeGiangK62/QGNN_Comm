@@ -9,7 +9,7 @@ import scipy.io
 from torch_geometric.loader import DataLoader
 
 
-from utils import train, test
+from utils import train, test, EarlyStopping
 from comm_utils import normalize_data, rate_loss
 from data import cfGraphDataset, load_cf_dataset
 
