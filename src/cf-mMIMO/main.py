@@ -129,9 +129,14 @@ def main(args):
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
     
+      
+    # Training and Tesing preparetion
     training_sinr = []
     testing_sinr = []
     model.train()
+    
+    model_save = os.path.join(result_dir, 'model', f"{timestamp}_{args.epochs}_{args.lr}_CF.pt")
+    early_stopping = EarlyStopping(patience=10, save_path=model_save)
     
     print(f"Training model with {args.graphlet_size} graphlet size with {args.epochs} epochs, "
           f"learning rate {args.lr}, step size {args.step_size}, and gamma {args.gamma}.")
@@ -140,8 +145,10 @@ def main(args):
     for epoch in range(args.epochs):
         # Train the model
         avg_train_loss = train(model, train_loader, optimizer)
-        scheduler.step()
         avg_test_sinr = test(model, test_loader)
+        scheduler.step()
+        if args.save_model:
+                early_stopping(-avg_test_sinr, model)
         training_sinr.append(avg_train_loss)
         testing_sinr.append(avg_test_sinr)
         print(f"Epoch {epoch + 1}/{args.epochs}, Training loss: {-avg_train_loss:.4f}, Training SINR: {training_sinr[-1]:.4f}, Testing SINR: {testing_sinr[-1]:.4f}")
@@ -150,44 +157,44 @@ def main(args):
     end = time.time()
     print(f"Total execution time: {end - start:.6f} seconds")
     
-    
-    eval_loader = DataLoader(test_dataset, batch_size=args.test_size, shuffle=False)
+    if args.plot:     
+        eval_loader = DataLoader(test_dataset, batch_size=args.test_size, shuffle=False)
 
-    for data, direct, cross in eval_loader:
-        bs = data.num_graphs
-        M = direct.shape[1]
-        K = data.x.shape[0] // M // bs
-        optimizer.zero_grad()
+        for data, direct, cross in eval_loader:
+            bs = data.num_graphs
+            M = direct.shape[1]
+            K = data.x.shape[0] // M // bs
+            optimizer.zero_grad()
 
-        output = model(data.x, data.edge_attr, data.edge_index, data.batch) # .reshape(bs, -1)
-        # output = output.reshape(bs,-1)
-        power = output.reshape(bs, M, K)
-        power = torch.mean(power, dim=2)
-        qgnn_rates = rate_loss(power, direct, cross, True).flatten().detach().numpy()
+            output = model(data.x, data.edge_attr, data.edge_index, data.batch) # .reshape(bs, -1)
+            # output = output.reshape(bs,-1)
+            power = output.reshape(bs, M, K)
+            power = torch.mean(power, dim=2)
+            qgnn_rates = rate_loss(power, direct, cross, True).flatten().detach().numpy()
 
-        full = torch.ones_like(power)
-        all_one_rates = rate_loss(full, direct, cross, True).flatten().numpy()
+            full = torch.ones_like(power)
+            all_one_rates = rate_loss(full, direct, cross, True).flatten().numpy()
+            
+        opt_rates = opt_rate
+        num_ep = args.test_size
+        min_rate, max_rate = 0, 2
+        y_axis = numpy.arange(0, 1.0, 1/(num_ep+2))
+        qgnn_rates.sort(); all_one_rates.sort(); opt_rates.sort()
+        qgnn_rates = numpy.insert(qgnn_rates, 0, min_rate); qgnn_rates = numpy.insert(qgnn_rates,num_ep+1,max_rate)
+        all_one_rates = numpy.insert(all_one_rates, 0, min_rate); all_one_rates = numpy.insert(all_one_rates,num_ep+1,max_rate)
+        opt_rates = numpy.insert(opt_rates, 0, min_rate); opt_rates = numpy.insert(opt_rates,num_ep+1,max_rate)
         
-    opt_rates = opt_rate
-    num_ep = args.test_size
-    min_rate, max_rate = 0, 2
-    y_axis = numpy.arange(0, 1.0, 1/(num_ep+2))
-    qgnn_rates.sort(); all_one_rates.sort(); opt_rates.sort()
-    qgnn_rates = numpy.insert(qgnn_rates, 0, min_rate); qgnn_rates = numpy.insert(qgnn_rates,num_ep+1,max_rate)
-    all_one_rates = numpy.insert(all_one_rates, 0, min_rate); all_one_rates = numpy.insert(all_one_rates,num_ep+1,max_rate)
-    opt_rates = numpy.insert(opt_rates, 0, min_rate); opt_rates = numpy.insert(opt_rates,num_ep+1,max_rate)
-    
-    plt.plot(qgnn_rates, y_axis, label = 'QGNN')
-    # plt.plot(gnn_rates, y_axis, label = 'GNN')
-    plt.plot(opt_rates, y_axis, label = 'Optimal')
-    plt.plot(all_one_rates, y_axis, label = 'Maximum Power')
-    plt.xlabel('Minimum rate [bps/Hz]', {'fontsize':16})
-    plt.ylabel('Empirical CDF', {'fontsize':16})
-    plt.legend(fontsize = 12)
-    plt.grid()
-    # plot_path = f"plot_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
-    plot_path = f"plot_{timestamp}_{args.graphlet_size}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
-    plt.savefig(os.path.join(result_dir, 'fig', plot_path), dpi=300)
+        plt.plot(qgnn_rates, y_axis, label = 'QGNN')
+        # plt.plot(gnn_rates, y_axis, label = 'GNN')
+        plt.plot(opt_rates, y_axis, label = 'Optimal')
+        plt.plot(all_one_rates, y_axis, label = 'Maximum Power')
+        plt.xlabel('Minimum rate [bps/Hz]', {'fontsize':16})
+        plt.ylabel('Empirical CDF', {'fontsize':16})
+        plt.legend(fontsize = 12)
+        plt.grid()
+        # plot_path = f"plot_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
+        plot_path = f"plot_{timestamp}_{args.graphlet_size}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
+        plt.savefig(os.path.join(result_dir, 'fig', plot_path), dpi=300)
 
     # train_losses = []
     # test_losses = []

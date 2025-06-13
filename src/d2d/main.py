@@ -122,17 +122,26 @@ def main(args):
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
     
+    
+    # Training and Tesing preparetion
     training_sinr = []
     testing_sinr = []
     model.train()
+    
+    model_save = os.path.join(result_dir, 'model', f"{timestamp}_{args.epochs}_{args.lr}_D2D.pt")
+    early_stopping = EarlyStopping(patience=10, save_path=model_save)
+    
+    ## Training Loop
     start = time.time()
     print(f"Training model with {args.graphlet_size} graphlet size with {args.epochs} epochs, "
           f"learning rate {args.lr}, step size {args.step_size}, and gamma {args.gamma}.")
     for epoch in range(args.epochs):
         # Train the model
         avg_train_loss, avg_train_sinr = train(model, train_loader, optimizer, var_noise)
-        scheduler.step()
         avg_test_sinr = test(model, test_loader,var_noise)
+        scheduler.step()
+        if args.save_model:
+                early_stopping(-avg_test_sinr, model)
         training_sinr.append(avg_train_sinr)
         testing_sinr.append(avg_test_sinr)
         print(f"Epoch {epoch + 1}/{args.epochs}, Training loss: {-avg_train_loss:.4f}, Training SINR: {training_sinr[-1]:.4f}, Testing SINR: {testing_sinr[-1]:.4f}")
@@ -153,27 +162,29 @@ def main(args):
         num_batch += data.num_graphs
     test_label = total_label/num_batch
     
-    plt.rcParams.update({'font.size': 14})
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(range(1, args.epochs+1), training_sinr, label='Training Sum Rate', marker='o', color='b')
-    plt.plot(range(1, args.epochs+1), testing_sinr, label='Testing Sum Rate', marker='s', color='r')
-    # plt.axhline(y=train_label, color='black', linestyle='-', label='Optimal SINR')
-    plt.axhline(y=train_label, color='black', linestyle='-', label='WMMSE')
-
-    plt.title('Unsupervised Setting')
-    plt.xlabel('Epoch')
-    plt.ylabel('SINR')
-    plt.xticks(range(1, args.epochs+1))
-    plt.legend()
-    plt.grid(True)
-    # plt.show()
     
-    plt.tight_layout()
-    # plot_path = f"plot_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
-    plot_path = f"plot_{timestamp}_{args.graphlet_size}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
-    plt.savefig(os.path.join(result_dir,'fig', plot_path), dpi=300)
+    if args.plot:    
+        plt.rcParams.update({'font.size': 14})
 
+        plt.figure(figsize=(10, 6))
+        plt.plot(range(1, args.epochs+1), training_sinr, label='Training Sum Rate', marker='o', color='b')
+        plt.plot(range(1, args.epochs+1), testing_sinr, label='Testing Sum Rate', marker='s', color='r')
+        # plt.axhline(y=train_label, color='black', linestyle='-', label='Optimal SINR')
+        plt.axhline(y=train_label, color='black', linestyle='-', label='WMMSE')
+
+        plt.title('Unsupervised Setting')
+        plt.xlabel('Epoch')
+        plt.ylabel('SINR')
+        plt.xticks(range(1, args.epochs+1))
+        plt.legend()
+        plt.grid(True)
+        # plt.show()
+        
+        plt.tight_layout()
+        # plot_path = f"plot_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
+        plot_path = f"plot_{timestamp}_{args.graphlet_size}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
+        plt.savefig(os.path.join(result_dir,'fig', plot_path), dpi=300)
+    #############################
     # train_losses = []
     # test_losses = []
     # train_accs = []
