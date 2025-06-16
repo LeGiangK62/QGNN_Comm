@@ -58,33 +58,38 @@ class cfGraphDataset(Dataset):
         edge_attr = []
 
         node_ft = H.flatten() 
-        # for ap in range(self.num_AP):
-        #     node_ids = [k + ap * self.num_UE for k in range(self.num_UE)]
-        #     for i, j in combinations(node_ids, 2):
-        #         edge_index.append([i, j])
-        #         edge_attr.append([node_ft[i], node_ft[j]])
-        # for ue in range(self.num_UE):
-        #     node_ids = [ue + m * self.num_UE for m in range(self.num_AP)]
-        #     for i, j in combinations(node_ids, 2):
-        #         edge_index.append([i, j])
-        #         edge_attr.append([node_ft[i], node_ft[j]])
-        # edge_index = torch.tensor(edge_index, dtype=torch.long).T
-        # edge_attr = torch.tensor(edge_attr, dtype=torch.float32)
+        for ap in range(self.num_AP):
+            node_ids = [k + ap * self.num_UE for k in range(self.num_UE)]
+            for i, j in combinations(node_ids, 2):
+                edge_index.append([i, j])
+                edge_index.append([j, i])
+                edge_attr.append([node_ft[i], node_ft[j]])
+                edge_attr.append([node_ft[j], node_ft[i]])
+        for ue in range(self.num_UE):
+            node_ids = [ue + m * self.num_UE for m in range(self.num_AP)]
+            for i, j in combinations(node_ids, 2):
+                edge_index.append([i, j])
+                edge_index.append([j, i])
+                edge_attr.append([node_ft[i], node_ft[j]])
+                edge_attr.append([node_ft[j], node_ft[i]])
+        edge_index = torch.tensor(edge_index, dtype=torch.long).T
+        edge_attr = torch.tensor(edge_attr, dtype=torch.float32)
         
         ###
-        rows, cols = np.triu_indices(self.num_nodes, k=1)  
-        m1, k1 = divmod(rows, self.num_UE)
-        m2, k2 = divmod(cols, self.num_UE)
-        edge_attr = np.stack([
-            H[m1, k1],    
-            H[m2, k2],    
-            H[m2, k1],    
-            H[m1, k2],    
-        ], axis=1)  
-        edge_index = np.stack([rows, cols], axis=0) 
+        # rows, cols = np.triu_indices(self.num_nodes, k=1)  
+        # m1, k1 = divmod(rows, self.num_UE)
+        # m2, k2 = divmod(cols, self.num_UE)
+        # edge_attr = np.stack([
+        #     H[m1, k1],    
+        #     H[m2, k2],    
+        #     H[m2, k1],    
+        #     H[m1, k2],    
+        # ], axis=1)  
+        # edge_index = np.stack([rows, cols], axis=0) 
+        # edge_index = torch.tensor(edge_index, dtype=torch.long)
+        # edge_attr = torch.tensor(edge_attr, dtype=torch.float32)
+        ####
         
-        edge_index = torch.tensor(edge_index, dtype=torch.long)
-        edge_attr = torch.tensor(edge_attr, dtype=torch.float32)
         x = torch.tensor(node_ft[:, None], dtype=torch.float32)
 
         data = Data(
