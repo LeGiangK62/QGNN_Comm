@@ -182,7 +182,7 @@ def main(args):
         
         plt.tight_layout()
         # plot_path = f"plot_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
-        plot_path = f"plot_{timestamp}_{args.graphlet_size}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
+        plot_path = f"plot_{timestamp}_{args.graphlet_size}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}_D2D.png"
         plt.savefig(os.path.join(result_dir,'fig', plot_path), dpi=300)
     #############################
     # train_losses = []

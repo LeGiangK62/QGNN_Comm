@@ -1,0 +1,208 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch_geometric.nn import GINConv, GCNConv, GATConv, SAGEConv, TransformerConv, MLP, global_add_pool
+from torch_geometric.nn import MessagePassing
+
+
+class Cf_edge_layer(MessagePassing):
+    def __init__(self, in_channels, out_channels):
+        super().__init__(aggr='add')
+            
+        self.upd_mlp = MLP([in_channels, out_channels, out_channels])
+        self.msg_mlp = MLP([in_channels * 2, out_channels, out_channels])
+
+    def forward(self, x, edge_attr, edge_index):
+        return self.propagate(edge_index, x=x, edge_attr=edge_attr)
+
+    def message(self, x_j, edge_attr):
+        tmp = torch.cat([x_j, edge_attr], dim=-1)
+        return self.msg_mlp(tmp)
+    
+    def update(self, aggr_out):
+        return self.upd_mlp(aggr_out)
+
+class GNN_Cf(nn.Module):
+    def __init__(self, node_input_dim=1, edge_input_dim=1, num_layers=1, hidden_channels=64):
+        super().__init__()
+        self.node_input_dim = node_input_dim
+        self.edge_input_dim = edge_input_dim   
+        self.num_layers = num_layers
+        self.hidden_channels = hidden_channels
+        
+        self.input_node = MLP([node_input_dim, hidden_channels])
+        self.input_edge = MLP([edge_input_dim, hidden_channels])
+        
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            self.convs.append(Cf_edge_layer(in_channels=hidden_channels, 
+                                            out_channels=hidden_channels)
+                              )
+        
+        self.final_layer = MLP([hidden_channels, hidden_channels, 1])
+    
+    def forward(self, node_feat, edge_attr, edge_index, batch):
+        node_feat = self.input_node(node_feat)
+        edge_attr = self.input_edge(edge_attr)
+        
+
+        # edge_index = edge_index.t()  # Ensure edge_index is in the correct format
+        for conv in self.convs:
+            node_feat = F.relu(conv(node_feat, edge_attr, edge_index))
+        
+        # node_feat = self.final_layer(node_feat)
+        node_feat = torch.sigmoid(self.final_layer(node_feat))
+        return node_feat
+    
+    
+class GIN_Node(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            mlp = MLP([in_channels if i==0 else hidden_channels,
+                       hidden_channels, hidden_channels])
+            self.convs.append(GINConv(nn=mlp, train_eps=False))
+        self.dropout = nn.Dropout(0.5)
+        self.classifier = nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, x, edge_attr, edge_index, batch=None):
+        for conv in self.convs:
+            x = F.relu(conv(x, edge_index))
+            x = self.dropout(x)
+        return self.classifier(x)
+    
+
+
+class GCN_Node(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            in_ch  = in_channels if i==0 else hidden_channels
+            out_ch = out_channels  if i==num_layers-1 else hidden_channels
+            self.convs.append(GCNConv(in_ch, out_ch))
+        self.dropout = nn.Dropout(0.5)
+
+    def forward(self, x, edge_attr, edge_index, batch=None):
+        for conv in self.convs[:-1]:
+            x = F.relu(conv(x, edge_index))
+            x = self.dropout(x)
+        # last layer, no activation
+        return self.convs[-1](x, edge_index)
+
+
+class GATN_Node(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels,
+                 num_layers, heads=8, dropout=0.6):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            in_ch = in_channels if i==0 else hidden_channels * heads
+            if i < num_layers-1:
+                self.convs.append(
+                    GATConv(in_ch, hidden_channels, heads=heads, dropout=dropout)
+                )
+            else:
+                # final layer: single head, no concat
+                self.convs.append(
+                    GATConv(in_ch, out_channels, heads=1, concat=False, dropout=dropout)
+                )
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, edge_attr, edge_index, batch=None):
+        for conv in self.convs[:-1]:
+            x = F.elu(conv(x, edge_index))
+            x = self.dropout(x)
+        return self.convs[-1](x, edge_index)
+    
+    
+# NOTE: Graph 
+
+class GIN_Graph(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            mlp = MLP([in_channels if i==0 else hidden_channels,
+                       hidden_channels, hidden_channels])
+            self.convs.append(GINConv(nn=mlp, train_eps=False))
+        self.dropout = nn.Dropout(0.5)
+        self.classifier = nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, x, edge_attr, edge_index, batch=None):
+        for conv in self.convs:
+            x = F.relu(conv(x, edge_index))
+            x = self.dropout(x)
+        x = global_add_pool(x, batch)
+        return self.classifier(x)
+    
+class GCN_Graph(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            in_dim = in_channels if i == 0 else hidden_channels
+            self.convs.append(GCNConv(in_dim, hidden_channels))
+        self.dropout = nn.Dropout(0.5)
+        self.classifier = nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, x, edge_attr, edge_index, batch=None):
+        for conv in self.convs:
+            x = F.relu(conv(x, edge_index))
+            x = self.dropout(x)
+        x = global_add_pool(x, batch)
+        return self.classifier(x)
+    
+class GAT_Graph(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers, heads=1):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            in_dim = in_channels if i == 0 else hidden_channels * heads
+            self.convs.append(GATConv(in_dim, hidden_channels, heads=heads))
+        self.dropout = nn.Dropout(0.5)
+        self.classifier = nn.Linear(hidden_channels * heads, out_channels)
+
+    def forward(self, x, edge_attr, edge_index, batch=None):
+        for conv in self.convs:
+            x = F.relu(conv(x, edge_index))
+            x = self.dropout(x)
+        x = global_add_pool(x, batch)
+        return self.classifier(x)
+
+
+class GraphSAGE_Graph(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            in_dim = in_channels if i == 0 else hidden_channels
+            self.convs.append(SAGEConv(in_dim, hidden_channels))
+        self.dropout = nn.Dropout(0.5)
+        self.classifier = nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, x, edge_attr, edge_index, batch=None):
+        for conv in self.convs:
+            x = F.relu(conv(x, edge_index))
+            x = self.dropout(x)
+        x = global_add_pool(x, batch)
+        return self.classifier(x)
+    
+    
+class Transformer_Graph(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers, heads=1):
+        super().__init__()
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            in_dim = in_channels if i == 0 else hidden_channels * heads
+            self.convs.append(TransformerConv(in_dim, hidden_channels, heads=heads))
+        self.dropout = nn.Dropout(0.5)
+        self.classifier = nn.Linear(hidden_channels * heads, out_channels)
+
+    def forward(self, x, edge_attr, edge_index, batch=None):
+        for conv in self.convs:
+            x = F.relu(conv(x, edge_index))
+            x = self.dropout(x)
+        x = global_add_pool(x, batch)
+        return self.classifier(x)

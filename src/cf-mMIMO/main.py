@@ -67,7 +67,7 @@ def get_args():
     
     # For switching between models
     parser.add_argument('--model', type=str, default='qgnn', 
-                        choices=['qgnn', 'handcraft', 'gin', 'gcn', 'gat', 'sage', 'trans'],
+                        choices=['qgnn', 'gnn'],
                         help="Which model to run"
                         )
     parser.add_argument('--graphlet_size', type=int, default=10)
@@ -93,6 +93,11 @@ def main(args):
         'update': (1, args.num_ent_layers, 3, 3), # (1, args.num_ent_layers, 2, 3)
         'twodesign': (0, args.num_ent_layers, 1, 2)
     }
+    
+    result_base = f"{timestamp}_{args.model}_{args.graphlet_size}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}_CF"
+    plot_train_path = os.path.join(result_dir, 'fig', f"plot_{result_base}_train.png")
+    plot_CDF_path = os.path.join(result_dir, 'fig', f"plot_{result_base}_CDF.png")
+    npz_path = os.path.join(result_dir, 'fig', f"data_{result_base}.npz")
 
     # Load dataset  
     train_path = os.path.join(root_dir, 'data', f'cf_train_{args.num_ue}_{args.num_ap}.mat')
@@ -115,14 +120,25 @@ def main(args):
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
 
-    model = QGNN(
-        q_dev=q_dev,
-        w_shapes=w_shapes_dict,
-        node_input_dim=node_input_dim,
-        edge_input_dim=edge_input_dim,
-        graphlet_size=args.node_qubit,
-        hop_neighbor=args.num_gnn_layers,
-    )
+    if args.model == 'qgnn':
+        model = QGNN(
+            q_dev=q_dev,
+            w_shapes=w_shapes_dict,
+            node_input_dim=node_input_dim,
+            edge_input_dim=edge_input_dim,
+            graphlet_size=args.node_qubit,
+            hop_neighbor=args.num_gnn_layers,
+        )
+    elif args.model == 'gnn':
+        from baseline import GNN_Cf
+        model = GNN_Cf(
+            node_input_dim=node_input_dim,
+            edge_input_dim=edge_input_dim,
+            num_layers=args.num_gnn_layers,
+            hidden_channels=args.hidden_channels
+        )
+    else:
+        raise NotImplementedError(f"Model {args.model} is not implemented yet.")
 
     model = model.to(device)
 
@@ -135,12 +151,12 @@ def main(args):
     testing_sinr = []
     model.train()
     
-    model_save = os.path.join(result_dir, 'model', f"{timestamp}_{args.epochs}_{args.lr}_CF.pt")
+    model_save = os.path.join(result_dir, 'model', f"{timestamp}_{args.model}_{args.epochs}_{args.lr}_CF.pt")
     early_stopping = EarlyStopping(patience=10, save_path=model_save)
-    
+    print(f"{timestamp} \n")
     print(f"Training model with {args.graphlet_size} graphlet size with {args.epochs} epochs, "
           f"learning rate {args.lr}, step size {args.step_size}, and gamma {args.gamma}.")
-    
+    step_plot = args.epochs // 10 if args.epochs > 10 else 1
     start = time.time()
     for epoch in range(args.epochs):
         # Train the model
@@ -148,16 +164,47 @@ def main(args):
         avg_test_sinr = test(model, test_loader)
         scheduler.step()
         if args.save_model:
-                early_stopping(-avg_test_sinr, model)
-        training_sinr.append(avg_train_loss)
-        testing_sinr.append(avg_test_sinr)
-        print(f"Epoch {epoch + 1}/{args.epochs}, Training loss: {-avg_train_loss:.4f}, Training SINR: {training_sinr[-1]:.4f}, Testing SINR: {testing_sinr[-1]:.4f}")
+            early_stopping(-avg_test_sinr, model)
+        training_sinr.append(-avg_train_loss)
+        testing_sinr.append(-avg_test_sinr)
+        if epoch % step_plot == 0:
+            print(f"Epoch {epoch + 1}/{args.epochs}, Training loss: {avg_train_loss:.4f}, "
+                  f"Training SINR: {training_sinr[-1]:.4f}, Testing SINR: {testing_sinr[-1]:.4f}")
     
     
     end = time.time()
     print(f"Total execution time: {end - start:.6f} seconds")
     
-    if args.plot:     
+    if args.plot:
+        numpy.savez_compressed(
+            npz_path, 
+            epoch=numpy.arange(1, args.epochs + 1), 
+            train_sinr=training_sinr, 
+            test_sinr=testing_sinr
+        )
+        epochs_range = range(1, args.epochs + 1)
+        plt.figure(figsize=(10, 5))
+
+        plt.subplot(1, 2, 1)
+        plt.plot(epochs_range, [-x for x in training_sinr], label="Train Loss")
+        plt.title(f"Training Loss ({args.graphlet_size}-node Graphlet)")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.legend()
+
+        plt.subplot(1, 2, 2)
+        plt.plot(epochs_range, training_sinr, label="Train SINR")
+        plt.plot(epochs_range, testing_sinr, label="Test SINR")
+        plt.title(f"SINR vs Epochs")
+        plt.xlabel("Epoch")
+        plt.ylabel("SINR (dB)")
+        plt.legend()
+
+        plt.tight_layout()
+        plt.savefig(plot_train_path, dpi=300)
+    
+    if args.results:     
+        print("Evaluating results...")
         eval_loader = DataLoader(test_dataset, batch_size=args.test_size, shuffle=False)
 
         for data, direct, cross in eval_loader:
@@ -184,6 +231,7 @@ def main(args):
         all_one_rates = numpy.insert(all_one_rates, 0, min_rate); all_one_rates = numpy.insert(all_one_rates,num_ep+1,max_rate)
         opt_rates = numpy.insert(opt_rates, 0, min_rate); opt_rates = numpy.insert(opt_rates,num_ep+1,max_rate)
         
+        plt.figure()
         plt.plot(qgnn_rates, y_axis, label = 'QGNN')
         # plt.plot(gnn_rates, y_axis, label = 'GNN')
         plt.plot(opt_rates, y_axis, label = 'Optimal')
@@ -192,9 +240,8 @@ def main(args):
         plt.ylabel('Empirical CDF', {'fontsize':16})
         plt.legend(fontsize = 12)
         plt.grid()
-        # plot_path = f"plot_{args.model}_{args.graphlet_size}_{args.dataset.lower()}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
-        plot_path = f"plot_{timestamp}_{args.graphlet_size}_{args.epochs}epochs_lr{args.lr}_{args.gamma}over{args.step_size}.png"
-        plt.savefig(os.path.join(result_dir, 'fig', plot_path), dpi=300)
+
+        plt.savefig(plot_CDF_path, dpi=300)
 
     # train_losses = []
     # test_losses = []

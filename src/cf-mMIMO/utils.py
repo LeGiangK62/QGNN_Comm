@@ -71,10 +71,10 @@ def train(model, train_loader, optimizer):
         power = torch.mean(power, dim=2)
         loss = rate_loss(power, direct, cross)
         loss.backward()
+        optimizer.step()
 
         total_loss += loss.item() * bs
         total_sample += bs
-        optimizer.step()
 
     return total_loss / total_sample
 

@@ -2,6 +2,7 @@ import torch
 import os
 import numpy as np
 import scipy.io
+from itertools import combinations
 
 from torch_geometric.data import Dataset, Data
 from comm_utils import normalize_data
@@ -21,25 +22,55 @@ class cfGraphDataset(Dataset):
         # Generate the dataset (graphs and labels)
         self.graphs = [self.create_graph(idx) for idx in range(self.num_samples)]
 
+    # def create_graph(self, idx):
+    #     H = self.norm_losses[idx]
+    #     x = torch.tensor(H.flatten()[:,None], dtype=torch.float32)
+
+    #     # Fully connected graph
+    #     edge_index = torch.tensor([
+    #         [i, j] for i in range(self.num_nodes) for j in range(i+1, self.num_nodes) #if i != j
+    #         # [i, j] for i in range(self.num_nodes) for j in range(self.num_nodes) if i != j
+    #     ], dtype=torch.long).T  # shape: [2, num_edges]
+
+    #     node_indices = np.arange(self.num_nodes)
+    #     row_indices, col_indices = np.unravel_index(node_indices, (self.num_AP, self.num_UE))
+    #     node_feat = H[row_indices, col_indices]
+    #     edge_attr_mtx = H[row_indices[:, None], col_indices[None, :]]
+    #     edge_attr_mtx = torch.tensor(edge_attr_mtx, dtype=torch.float32)
+    #     # edge_attr = edge_attr_mtx[edge_index[0], edge_index[1]][:,None]
+    #     edge_attr = torch.cat([edge_attr_mtx[edge_index[0], edge_index[1]][:,None], edge_attr_mtx[edge_index[1], edge_index[0]][:,None]], dim=-1)
+
+    #     # y = torch.tensor(self.labels[idx], dtype=torch.float32)
+
+    #     data = Data(
+    #         x=x,
+    #         edge_index=edge_index,
+    #         edge_attr=edge_attr,
+    #         direct = self.direct[idx],
+    #         cross = self.cross[idx],
+    #         # y=y
+    #     )
+    #     return data
+    
     def create_graph(self, idx):
         H = self.norm_losses[idx]
-        x = torch.tensor(H.flatten()[:,None], dtype=torch.float32)
+        edge_index = []
+        edge_attr = []
 
-        # Fully connected graph
-        edge_index = torch.tensor([
-            [i, j] for i in range(self.num_nodes) for j in range(i+1, self.num_nodes) #if i != j
-            # [i, j] for i in range(self.num_nodes) for j in range(self.num_nodes) if i != j
-        ], dtype=torch.long).T  # shape: [2, num_edges]
-
-        node_indices = np.arange(self.num_nodes)
-        row_indices, col_indices = np.unravel_index(node_indices, (self.num_AP, self.num_UE))
-        node_feat = H[row_indices, col_indices]
-        edge_attr_mtx = H[row_indices[:, None], col_indices[None, :]]
-        edge_attr_mtx = torch.tensor(edge_attr_mtx, dtype=torch.float32)
-        # edge_attr = edge_attr_mtx[edge_index[0], edge_index[1]][:,None]
-        edge_attr = torch.cat([edge_attr_mtx[edge_index[0], edge_index[1]][:,None], edge_attr_mtx[edge_index[1], edge_index[0]][:,None]], dim=-1)
-
-        # y = torch.tensor(self.labels[idx], dtype=torch.float32)
+        node_ft = H.flatten() 
+        for ap in range(self.num_AP):
+            node_ids = [k + ap * self.num_UE for k in range(self.num_UE)]
+            for i, j in combinations(node_ids, 2):
+                edge_index.append([i, j])
+                edge_attr.append([node_ft[i], node_ft[j]])
+        for ue in range(self.num_UE):
+            node_ids = [ue + m * self.num_UE for m in range(self.num_AP)]
+            for i, j in combinations(node_ids, 2):
+                edge_index.append([i, j])
+                edge_attr.append([node_ft[i], node_ft[j]])
+        edge_index = torch.tensor(edge_index, dtype=torch.long).T
+        edge_attr = torch.tensor(edge_attr, dtype=torch.float32)
+        x = torch.tensor(node_ft[:, None], dtype=torch.float32)
 
         data = Data(
             x=x,
