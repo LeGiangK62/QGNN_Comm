@@ -72,9 +72,9 @@ class cfGraphDataset(Dataset):
         # edge_attr = torch.tensor(edge_attr, dtype=torch.float32)
         
         ###
-        rows, cols = np.triu_indices(num_nodes, k=1)  
-        m1, k1 = divmod(rows, K)
-        m2, k2 = divmod(cols, K)
+        rows, cols = np.triu_indices(self.num_nodes, k=1)  
+        m1, k1 = divmod(rows, self.num_UE)
+        m2, k2 = divmod(cols, self.num_UE)
         edge_attr = np.stack([
             H[m1, k1],    
             H[m2, k2],    
