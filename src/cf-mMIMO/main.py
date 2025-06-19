@@ -11,7 +11,7 @@ from torch_geometric.loader import DataLoader
 
 from utils import train, test, EarlyStopping
 from comm_utils import normalize_data, rate_loss
-from data import cfGraphDataset, load_cf_dataset
+from data import cfGraphDataset, load_cf_dataset, cfHetGraphDataset
 
 from model import QGNN
 
@@ -106,15 +106,29 @@ def main(args):
         norm_test_losses, direct_test, cross_test, (test_K, test_M), \
         opt_rate = load_cf_dataset(train_path, test_path,
             training_sam=args.train_size, testing_sam=args.test_size)
-    train_dataset = cfGraphDataset(norm_train_losses, direct_train, cross_train, (train_K, train_M))
-    test_dataset = cfGraphDataset(norm_test_losses, direct_test, cross_test, (test_K, test_M))
+    train_dataset = cfHetGraphDataset(norm_train_losses, direct_train, cross_train, (train_K, train_M))
+    test_dataset = cfHetGraphDataset(norm_test_losses, direct_test, cross_test, (test_K, test_M))
 
     # if task_type != 'graph':
     #     raise NotImplementedError("Node classification support is not implemented yet.")
  
     # Model metadata
-    node_input_dim = train_dataset[0][0].x.shape[1]
-    edge_input_dim = train_dataset[0][0].edge_attr.shape[1]
+    # node_input_dim = train_dataset[0][0].x.shape[1]
+    # edge_input_dim = train_dataset[0][0].edge_attr.shape[1]
+    
+    node_ue_dim = train_dataset[0][0].x_dict['UE'].shape[1]
+    node_ap_dim = train_dataset[0][0].x_dict['AP'].shape[1]
+    edge_to_AP_dim = train_dataset[0][0].edge_attr_dict['UE','com-by','AP'].shape[1]
+    edge_to_UE_dim = train_dataset[0][0].edge_attr_dict['AP','com','UE'].shape[1]
+    
+    node_input_dim = {
+        'UE': node_ue_dim,
+        'AP': node_ap_dim
+    }
+    edge_input_dim = {
+        'UE': edge_to_UE_dim,
+        'AP': edge_to_AP_dim
+    }
     
     
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
@@ -210,13 +224,12 @@ def main(args):
         for data, direct, cross in eval_loader:
             bs = data.num_graphs
             M = direct.shape[1]
-            K = data.x.shape[0] // M // bs
+            K = data.x_dict['AP'].shape[0] // bs
             optimizer.zero_grad()
 
-            output = model(data.x, data.edge_attr, data.edge_index, data.batch) # .reshape(bs, -1)
+            output = model(data.x_dict, data.edge_attr_dict, data.edge_index_dict, data.batch_dict) # .reshape(bs, -1)
             # output = output.reshape(bs,-1)
-            power = output.reshape(bs, M, K)
-            power = torch.mean(power, dim=2)
+            power = output.reshape(bs, M)
             qgnn_rates = rate_loss(power, direct, cross, True).flatten().detach().numpy()
 
             full = torch.ones_like(power)

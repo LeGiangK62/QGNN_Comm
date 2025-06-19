@@ -95,8 +95,8 @@ def input_process(tensor):
     return torch.tanh(tensor) * np.pi
 
 class QGNN(nn.Module):
-    def __init__(self, q_dev, w_shapes, node_input_dim=1, edge_input_dim=1,
-                 graphlet_size=4, hop_neighbor=1):
+    def __init__(self, q_dev, w_shapes, node_input_dim={'UE': 1, 'AP': 1}, edge_input_dim={'UE': 2, 'AP': 2},
+                 graphlet_size=4, hop_neighbor=1, meta=['UE', 'AP']):
         super().__init__()
         self.hidden_dim = 128
         self.graphlet_size = graphlet_size
@@ -107,39 +107,45 @@ class QGNN(nn.Module):
         self.pqc_out = 1 # probs?
 
 
+        self.input_node = nn.ModuleDict()
+        self.input_edge = nn.ModuleDict()
         self.qconvs = nn.ModuleDict()
         self.upds = nn.ModuleDict()
         self.aggs = nn.ModuleDict()
         self.norms = nn.ModuleDict()
 
+        
+        self.node_input_dim = {}
+        self.edge_input_dim = {}
 
-        self.node_input_dim = node_input_dim
-        self.edge_input_dim = edge_input_dim if edge_input_dim > 0 else 1
+        
 
+        for node_type in meta:
+            self.node_input_dim[node_type] = node_input_dim[node_type]
+            self.edge_input_dim[node_type] = edge_input_dim[node_type] if edge_input_dim[node_type] > 0 else 1
+            self.input_node[node_type] = MLP(
+                        [self.node_input_dim[node_type], self.hidden_dim, self.final_dim],
+                        act='leaky_relu',
+                        norm=None, dropout=0.3
+                )
 
-        self.input_node = MLP(
-                    [self.node_input_dim, self.hidden_dim, self.final_dim],
-                    act='leaky_relu',
-                    norm=None, dropout=0.3
-            )
+            self.input_edge[node_type] = MLP(
+                        [self.edge_input_dim[node_type], self.hidden_dim, self.pqc_dim],
+                        act='leaky_relu',
+                        norm=None, dropout=0.3
+                )
 
-        self.input_edge = MLP(
-                    [self.edge_input_dim, self.hidden_dim, self.pqc_dim],
-                    act='leaky_relu',
-                    norm=None, dropout=0.3
-            )
+            for i in range(self.hop_neighbor):
+                qnode = qml.QNode(qgcn_enhance_layer, q_dev,  interface="torch")
+                self.qconvs[f"lay{i+1}_{node_type}"] = qml.qnn.TorchLayer(qnode, w_shapes, uniform_pi_init)
 
-        for i in range(self.hop_neighbor):
-            qnode = qml.QNode(qgcn_enhance_layer, q_dev,  interface="torch")
-            self.qconvs[f"lay{i+1}"] = qml.qnn.TorchLayer(qnode, w_shapes, uniform_pi_init)
+                self.upds[f"lay{i+1}_{node_type}"] = MLP(
+                        [self.pqc_dim + self.pqc_out, self.hidden_dim, self.pqc_dim],
+                        act='leaky_relu',
+                        norm=None, dropout=0.3
+                )
 
-            self.upds[f"lay{i+1}"] = MLP(
-                    [self.pqc_dim + self.pqc_out, self.hidden_dim, self.pqc_dim],
-                    act='leaky_relu',
-                    norm=None, dropout=0.3
-            )
-
-            self.norms[f"lay{i+1}"] = nn.LayerNorm(self.pqc_dim)
+                self.norms[f"lay{i+1}_{node_type}"] = nn.LayerNorm(self.pqc_dim)
 
         self.final_layer = MLP(
                 [self.final_dim, self.hidden_dim, 1],
@@ -147,74 +153,69 @@ class QGNN(nn.Module):
                 norm=None, dropout=0.3
         )
 
-    def forward(self, node_feat, edge_attr, edge_index, batch):
-        edge_index = edge_index.t()
-        num_nodes = node_feat.size(0)
-        num_nodes_model = self.graphlet_size
-        num_edges_model = self.graphlet_size - 1
+    def sampling_neighbors(self, neighbor_ids, edge_ids):
+        if neighbor_ids.numel() == 0:
+            return neighbor_ids, edge_ids
 
-        if edge_attr is None:
-            edge_attr = torch.ones((edge_index.size(0), self.edge_input_dim), device=node_feat.device)
+        if neighbor_ids.numel() > self.graphlet_size - 1:
+            perm = torch.randperm(neighbor_ids.numel())[:graphlet_size - 1]
+            neighbor_ids = neighbor_ids[perm]
+            edge_ids = edge_ids[perm]
+            
+        return neighbor_ids, edge_ids
 
-        edge_features = edge_attr.float()
-        node_features = node_feat.float()
-
-        edge_features = self.input_edge(edge_features)
-        node_features = self.input_node(node_features)
-
-        node_features = input_process(node_features)
-        # # node_features = node_features + 0.01 * torch.randn_like(node_features)
-        edge_features = input_process(edge_features)
-
-
-        idx_dict = {
-            (int(u), int(v)): i
-            for i, (u, v) in enumerate(edge_index.tolist())
-        }
-
-
-        adj_mtx = torch.zeros((num_nodes, num_nodes), dtype=torch.int)
-        adj_mtx[edge_index[:, 0], edge_index[:, 1]] = 1
-        adj_mtx[edge_index[:, 1], edge_index[:, 0]] = 1
-
-
+    def forward(self, x_dict, edge_attr_dict, edge_index_dict, batch_dict):        
+        # Prepocess node and edge features - To the same feature dim
+        for node_type, node_feat in x_dict.items():
+            x_dict[node_type] = input_process(self.input_node[node_type](node_feat.float()))
+            
+        for edge_type, edge_index in edge_index_dict.items():
+            src_type, _, dst_type = edge_type
+            edge_attr_dict[edge_type] = input_process(self.input_edge[dst_type](edge_attr_dict[edge_type].float()))
+        
         for i in range(self.hop_neighbor):
-            subgraphs = star_subgraph(adj_mtx.cpu().numpy(), subgraph_size=self.graphlet_size)
-            node_upd = torch.zeros((num_nodes, self.final_dim), device=node_features.device)
-            q_layer = self.qconvs[f"lay{i+1}"]
-            upd_layer = self.upds[f"lay{i+1}"]
-            norm_layer = self.norms[f"lay{i+1}"]
+            for edge_type, edge_index in edge_index_dict.items():
+                src_type, _, dst_type = edge_type
+                edge_index = edge_index.t()
 
-            # updates_node = node_features.clone()
+                q_layer = self.qconvs[f"lay{i+1}_{dst_type}"]
+                upd_layer = self.upds[f"lay{i+1}_{dst_type}"]
+                norm_layer = self.norms[f"lay{i+1}_{dst_type}"]
 
-            centers = []
-            updates = []
+                edge_attr = edge_attr_dict[edge_type]
+                src_feat = x_dict[src_type]
+                dst_feat = x_dict[dst_type]
+                
+                dst_nodes = torch.unique(edge_index[1]).tolist()
+                
+                updates = []    
+                centers = []
+                    
+                for each_dst in dst_nodes:
+                    neighbor_mask = (edge_index[1] == each_dst)
+                    neighbor_ids = edge_index[0][neighbor_mask]
+                    edge_ids = torch.nonzero(neighbor_mask, as_tuple=False).squeeze()
+                    neighbor_ids, edge_ids  = self.sampling_neighbors(neighbor_ids, edge_ids)
+                    
+                    center = dst_feat[each_dst]
+                    neighbors = src_feat[neighbor_ids]
+                    n_feat = torch.cat([center.unsqueeze(0), neighbors], dim=0)
+                    e_feat = edge_attr[edge_ids.view(-1)]
+                    
+                    inputs = torch.cat([e_feat, n_feat], dim=0)
+                    all_msg = q_layer(inputs.flatten())
+                    aggr = all_msg
+                    update_dst = upd_layer(torch.cat([center, aggr], dim=0))
+                    updates.append(update_dst)
+                    centers.append(each_dst)
+                    
+                
+                centers = torch.tensor(centers, device=dst_feat.device)
+                updates = torch.stack(updates, dim=0)
+                updates_node = torch.zeros_like(dst_feat)
+                updates_node = updates_node.index_add(0, centers, updates)
 
-            for sub in subgraphs:
-                center, *neighbors = sub
+                # node_features = norm_layer(updates_node + node_features)
+                x_dict[dst_type] = dst_feat + updates_node
 
-                n_feat = node_features[sub]
-                edge_idxs = [
-                    idx_dict[(min(center, int(n)), max(center, int(n)))] 
-                    for n in neighbors 
-                ]
-                e_feat    = edge_features[edge_idxs]
-                inputs = torch.cat([e_feat, n_feat], dim=0)
-
-                all_msg = q_layer(inputs.flatten())
-                aggr = all_msg
-                update_vec = upd_layer(torch.cat([node_features[center], aggr], dim=0))
-
-                centers.append(center)
-                updates.append(update_vec)
-
-            centers = torch.tensor(centers, device=node_features.device)
-            updates = torch.stack(updates, dim=0)
-            updates_node = torch.zeros_like(node_features)
-            updates_node = updates_node.index_add(0, centers, updates)
-
-            # node_features = norm_layer(updates_node + node_features)
-            node_features = updates_node + node_features
-        # graph_embedding = global_mean_pool(node_features, batch)
-
-        return torch.sigmoid(self.final_layer(node_features))
+        return torch.sigmoid(self.final_layer(x_dict['UE']))

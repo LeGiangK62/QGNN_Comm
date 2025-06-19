@@ -62,13 +62,11 @@ def train(model, train_loader, optimizer):
     for data, direct, cross in train_loader:
         bs = data.num_graphs
         M = direct.shape[1]
-        K = data.x.shape[0] // M // bs
+        K = data.x_dict['AP'].shape[0] // bs
         optimizer.zero_grad()
 
-        output = model(data.x, data.edge_attr, data.edge_index, data.batch) # .reshape(bs, -1)
-        # output = output.reshape(bs,-1)
-        power = output.reshape(bs, M, K)
-        power = torch.mean(power, dim=2)
+        output = model(data.x_dict, data.edge_attr_dict, data.edge_index_dict, data.batch_dict) # .reshape(bs, -1)
+        power = output.reshape(bs, M)
         loss = rate_loss(power, direct, cross)
         loss.backward()
         optimizer.step()
@@ -86,13 +84,12 @@ def test(model, test_loader):
         for data, direct, cross in test_loader:
             bs = data.num_graphs
             M = direct.shape[1]
-            K = data.x.shape[0] // M // bs
+            K = data.x_dict['AP'].shape[0] // bs
             # optimizer.zero_grad()
 
-            output = model(data.x, data.edge_attr, data.edge_index, data.batch) # .reshape(bs, -1)
+            output = model(data.x_dict, data.edge_attr_dict, data.edge_index_dict, data.batch_dict) # .reshape(bs, -1)
             # output = output.reshape(bs,-1)
-            power = output.reshape(bs, M, K)
-            power = torch.mean(power, dim=2)
+            power = output.reshape(bs, M)
             loss = rate_loss(power, direct, cross)
             # loss.backward()
 
