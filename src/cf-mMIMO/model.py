@@ -124,16 +124,16 @@ class QGNN(nn.Module):
             self.node_input_dim[node_type] = node_input_dim[node_type]
             self.edge_input_dim[node_type] = edge_input_dim[node_type] if edge_input_dim[node_type] > 0 else 1
             self.input_node[node_type] = MLP(
-                        [self.node_input_dim[node_type], self.hidden_dim, self.final_dim],
-                        act='leaky_relu',
-                        norm=None, dropout=0.3
-                )
+                [self.node_input_dim[node_type], self.hidden_dim, self.final_dim],
+                act='leaky_relu',
+                norm=None, dropout=0.3
+            )
 
             self.input_edge[node_type] = MLP(
-                        [self.edge_input_dim[node_type], self.hidden_dim, self.pqc_dim],
-                        act='leaky_relu',
-                        norm=None, dropout=0.3
-                )
+                [self.edge_input_dim[node_type], self.hidden_dim, self.pqc_dim],
+                act='leaky_relu',
+                norm=None, dropout=0.3
+            )
 
             for i in range(self.hop_neighbor):
                 qnode = qml.QNode(qgcn_enhance_layer, q_dev,  interface="torch")
@@ -158,7 +158,7 @@ class QGNN(nn.Module):
             return neighbor_ids, edge_ids
 
         if neighbor_ids.numel() > self.graphlet_size - 1:
-            perm = torch.randperm(neighbor_ids.numel())[:graphlet_size - 1]
+            perm = torch.randperm(neighbor_ids.numel())[:self.graphlet_size - 1]
             neighbor_ids = neighbor_ids[perm]
             edge_ids = edge_ids[perm]
             

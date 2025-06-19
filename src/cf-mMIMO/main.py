@@ -40,6 +40,7 @@ def get_args():
     parser.add_argument('--test_size', type=int, default=50)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--epochs', type=int, default=20)
+    parser.add_argument('--step_plot', type=int, default=0)
     parser.add_argument('--lr', type=float, default=5e-2)
     parser.add_argument('--step_size', type=int, default=5)
     parser.add_argument('--gamma', type=float, default=0.8)
@@ -167,10 +168,11 @@ def main(args):
     
     model_save = os.path.join(result_dir, 'model', f"{timestamp}_{args.model}_{args.epochs}_{args.lr}_CF.pt")
     early_stopping = EarlyStopping(patience=10, save_path=model_save)
-    print(f"{timestamp} \n")
+    print(f"\n ===={timestamp}==== ")
     print(f"Training model with {args.graphlet_size} graphlet size with {args.epochs} epochs, "
           f"learning rate {args.lr}, step size {args.step_size}, and gamma {args.gamma}.")
-    step_plot = args.epochs // 10 if args.epochs > 10 else 1
+    if args.step_plot == 0:
+        step_plot = args.epochs // 10 if args.epochs > 10 else 1
     start = time.time()
     for epoch in range(args.epochs):
         # Train the model

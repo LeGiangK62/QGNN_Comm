@@ -31,17 +31,17 @@ class cfHetGraphDataset(Dataset):
     def create_graph(self, idx):
         H = self.norm_losses[idx]
         edge_feat = H.reshape((self.KM[0] * self.KM[1], 1), order='F')
-        edge_feat = np.concatenate([edge_feat, np.ones_like(edge_feat)], axis=-1)
+        # edge_feat = np.concatenate([edge_feat, np.ones_like(edge_feat)], axis=-1)
         edge_feat = torch.tensor(edge_feat, dtype=torch.float32)
 
         edge_index = torch.tensor(self.adj, dtype=torch.long).T.contiguous()
         edge_index_t = torch.tensor(self.adj_t, dtype=torch.long).T.contiguous()
 
-        ue_feat = torch.ones((self.KM[0], 1), dtype=torch.float32)
-        ap_feat = torch.ones((self.KM[1], 1), dtype=torch.float32)
+        ue_feat = torch.zeros((self.KM[0], 1), dtype=torch.float32)
+        ap_feat = torch.zeros((self.KM[1], 1), dtype=torch.float32)
 
-        edge_sum_ue = edge_feat.view(self.KM[0], self.KM[1], 2).sum(dim=1)
-        edge_sum_ap = edge_feat.view(self.KM[0], self.KM[1], 2).sum(dim=0).reshape(self.KM[1], 2)
+        # edge_sum_ue = edge_feat.view(self.KM[0], self.KM[1], 2).sum(dim=1)
+        # edge_sum_ap = edge_feat.view(self.KM[0], self.KM[1], 2).sum(dim=0).reshape(self.KM[1], 2)
 
         data = HeteroData()
         data['UE'].x = ue_feat
@@ -50,8 +50,9 @@ class cfHetGraphDataset(Dataset):
         data['UE', 'com-by', 'AP'].edge_attr = edge_feat
         data['AP', 'com', 'UE'].edge_index = edge_index_t
         data['AP', 'com', 'UE'].edge_attr = edge_feat
-        data['UE'].edge_sum = edge_sum_ue
-        data['AP'].edge_sum = edge_sum_ap
+        # data['UE'].edge_sum = edge_sum_ue
+        # data['AP'].edge_sum = edge_sum_ap
+        
         return data
 
     def __len__(self):
