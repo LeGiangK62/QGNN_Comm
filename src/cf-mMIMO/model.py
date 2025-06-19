@@ -176,7 +176,6 @@ class QGNN(nn.Module):
         for i in range(self.hop_neighbor):
             for edge_type, edge_index in edge_index_dict.items():
                 src_type, _, dst_type = edge_type
-                edge_index = edge_index.t()
 
                 q_layer = self.qconvs[f"lay{i+1}_{dst_type}"]
                 upd_layer = self.upds[f"lay{i+1}_{dst_type}"]
@@ -187,6 +186,7 @@ class QGNN(nn.Module):
                 dst_feat = x_dict[dst_type]
                 
                 dst_nodes = torch.unique(edge_index[1]).tolist()
+                
                 
                 updates = []    
                 centers = []

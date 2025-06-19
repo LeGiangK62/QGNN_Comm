@@ -15,7 +15,7 @@ class cfHetGraphDataset(Dataset):
         self.cross = torch.tensor(cross, dtype=torch.float32)
         self.KM = KM
         self.num_samples, self.num_AP, self.num_UE = self.norm_losses.shape
-        self.num_nodes = self.num_AP * self.num_UE
+        # self.num_nodes = self.num_AP * self.num_UE
         self.adj, self.adj_t = self.build_edge_index()
         # Generate the dataset (graphs and labels)
         self.graphs = [self.create_graph(idx) for idx in range(self.num_samples)]
