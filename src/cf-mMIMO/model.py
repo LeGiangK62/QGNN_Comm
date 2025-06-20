@@ -62,7 +62,9 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     # return probs
     # expval = [qml.expval(qml.PauliZ(w)) for w in [center_wire, num_qbit, num_qbit+1]]
     expval = [
-        qml.expval(qml.PauliX(center_wire))
+        qml.expval(qml.PauliX(center_wire)),
+        qml.expval(qml.PauliX(num_qbit)),
+        qml.expval(qml.PauliX(num_qbit+1))
     ]
     return expval
 
@@ -104,7 +106,7 @@ class QGNN(nn.Module):
         self.pqc_dim = 2 # number of feat per pqc for each node
         self.chunk = 1
         self.final_dim = self.pqc_dim * self.chunk # 2
-        self.pqc_out = 1 # probs?
+        self.pqc_out = 3 # probs?
 
 
         self.input_node = nn.ModuleDict()
@@ -154,8 +156,8 @@ class QGNN(nn.Module):
         )
 
     def sampling_neighbors(self, neighbor_ids, edge_ids):
-        if neighbor_ids.numel() == 0:
-            return neighbor_ids, edge_ids
+        # if neighbor_ids.numel() == 0:
+        #     return neighbor_ids, edge_ids
 
         if neighbor_ids.numel() > self.graphlet_size - 1:
             perm = torch.randperm(neighbor_ids.numel())[:self.graphlet_size - 1]
@@ -185,19 +187,19 @@ class QGNN(nn.Module):
                 src_feat = x_dict[src_type]
                 dst_feat = x_dict[dst_type]
                 
-                dst_nodes = torch.unique(edge_index[1]).tolist()
+                dst_indices = torch.unique(edge_index[1]).tolist()
                 
                 
                 updates = []    
                 centers = []
                     
-                for each_dst in dst_nodes:
-                    neighbor_mask = (edge_index[1] == each_dst)
+                for dst_idx in dst_indices:
+                    neighbor_mask = (edge_index[1] == dst_idx)
                     neighbor_ids = edge_index[0][neighbor_mask]
                     edge_ids = torch.nonzero(neighbor_mask, as_tuple=False).squeeze()
                     neighbor_ids, edge_ids  = self.sampling_neighbors(neighbor_ids, edge_ids)
                     
-                    center = dst_feat[each_dst]
+                    center = dst_feat[dst_idx]
                     neighbors = src_feat[neighbor_ids]
                     n_feat = torch.cat([center.unsqueeze(0), neighbors], dim=0)
                     e_feat = edge_attr[edge_ids.view(-1)]
@@ -207,7 +209,7 @@ class QGNN(nn.Module):
                     aggr = all_msg
                     update_dst = upd_layer(torch.cat([center, aggr], dim=0))
                     updates.append(update_dst)
-                    centers.append(each_dst)
+                    centers.append(dst_idx)
                     
                 
                 centers = torch.tensor(centers, device=dst_feat.device)
