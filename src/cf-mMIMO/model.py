@@ -3,7 +3,9 @@ import torch.nn as nn
 import pennylane as qml
 from pennylane import numpy as np
 import torch.nn.functional as F
-from torch_geometric.nn import MLP, global_add_pool, global_mean_pool, global_max_pool   
+from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool, MLP
+from torch.nn import BatchNorm1d as BN
+
 
 from utils import star_subgraph
 
@@ -128,13 +130,17 @@ class QGNN(nn.Module):
             self.input_node[node_type] = MLP(
                 [self.node_input_dim[node_type], self.hidden_dim, self.final_dim],
                 act='leaky_relu',
-                norm=None, dropout=0.3
+                # norm=None,
+                norm='batch_norm', 
+                dropout=0.3
             )
 
             self.input_edge[node_type] = MLP(
                 [self.edge_input_dim[node_type], self.hidden_dim, self.pqc_dim],
                 act='leaky_relu',
-                norm=None, dropout=0.3
+                # norm=None,
+                norm='batch_norm', 
+                dropout=0.3
             )
 
             for i in range(self.hop_neighbor):
@@ -144,15 +150,19 @@ class QGNN(nn.Module):
                 self.upds[f"lay{i+1}_{node_type}"] = MLP(
                         [self.pqc_dim + self.pqc_out, self.hidden_dim, self.pqc_dim],
                         act='leaky_relu',
-                        norm=None, dropout=0.3
+                        norm=None,
+                        dropout=0.3
                 )
 
-                self.norms[f"lay{i+1}_{node_type}"] = nn.LayerNorm(self.pqc_dim)
+                # self.norms[f"lay{i+1}_{node_type}"] = nn.LayerNorm(self.pqc_dim)
+                self.norms[f"lay{i+1}_{node_type}"] = nn.BatchNorm1d(self.pqc_dim)
 
         self.final_layer = MLP(
                 [self.final_dim, self.hidden_dim, 1],
                 act='leaky_relu',
-                norm=None, dropout=0.3
+                # norm=None,
+                norm='batch_norm', 
+                dropout=0.3
         )
 
     def sampling_neighbors(self, neighbor_ids, edge_ids):
@@ -218,6 +228,7 @@ class QGNN(nn.Module):
                 updates_node = updates_node.index_add(0, centers, updates)
 
                 # node_features = norm_layer(updates_node + node_features)
-                x_dict[dst_type] = dst_feat + updates_node
+                x_dict[dst_type] = F.relu(norm_layer(x_dict[dst_type] + updates_node))
 
         return torch.sigmoid(self.final_layer(x_dict['UE']))
+    
