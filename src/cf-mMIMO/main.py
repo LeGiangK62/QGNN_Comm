@@ -145,10 +145,16 @@ def main(args):
             hop_neighbor=args.num_gnn_layers,
         )
     elif args.model == 'gnn':
-        from baseline import GNN_Cf
-        model = GNN_Cf(
-            node_input_dim=node_input_dim,
-            edge_input_dim=edge_input_dim,
+        from baseline import GNN_Cf, RGCN
+        # model = GNN_Cf(
+        #     node_input_dim=node_input_dim,
+        #     edge_input_dim=edge_input_dim,
+        #     num_layers=args.num_gnn_layers,
+        #     hidden_channels=args.hidden_channels
+        # )
+        model = RGCN(
+            node_input_dim=node_ue_dim,
+            edge_input_dim=edge_to_UE_dim,
             num_layers=args.num_gnn_layers,
             hidden_channels=args.hidden_channels
         )
@@ -220,6 +226,23 @@ def main(args):
         plt.savefig(plot_train_path, dpi=300)
     
     if args.results:     
+        # main baseline model
+        base_model = RGCN(
+            node_input_dim=node_ue_dim,
+            edge_input_dim=edge_to_UE_dim,
+            num_layers=args.num_gnn_layers,
+            hidden_channels=args.hidden_channels
+        )
+        
+        base_optimizer = optim.Adam(base_model.parameters(), lr=args.lr)
+        base_scheduler = torch.optim.lr_scheduler.StepLR(base_optimizer, step_size=args.step_size, gamma=args.gamma)
+
+        for epoch in range(args.epochs):
+            _ = train(base_model, train_loader, base_optimizer)
+            _ = test(base_model, test_loader)
+            base_scheduler.step()
+            
+            
         print("Evaluating results...")
         eval_loader = DataLoader(test_dataset, batch_size=args.test_size, shuffle=False)
 
@@ -233,7 +256,10 @@ def main(args):
             # output = output.reshape(bs,-1)
             power = output.reshape(bs, M)
             qgnn_rates = rate_loss(power, direct, cross, True).flatten().detach().numpy()
-
+            
+            base_output = base_model(data.x_dict, data.edge_attr_dict, data.edge_index_dict, data.batch_dict) # .reshape(bs, -1)
+            base_power = base_output.reshape(bs, M)
+            gnn_rates = rate_loss(base_power, direct, cross, True).flatten().detach().numpy()
             full = torch.ones_like(power)
             all_one_rates = rate_loss(full, direct, cross, True).flatten().numpy()
             
@@ -241,14 +267,16 @@ def main(args):
         num_ep = args.test_size
         min_rate, max_rate = 0, 2
         y_axis = numpy.arange(0, 1.0, 1/(num_ep+2))
-        qgnn_rates.sort(); all_one_rates.sort(); opt_rates.sort()
+        qgnn_rates.sort(); gnn_rates.sort(); all_one_rates.sort(); opt_rates.sort()
         qgnn_rates = numpy.insert(qgnn_rates, 0, min_rate); qgnn_rates = numpy.insert(qgnn_rates,num_ep+1,max_rate)
+        gnn_rates = numpy.insert(gnn_rates, 0, min_rate); gnn_rates = numpy.insert(gnn_rates,num_ep+1,max_rate)
         all_one_rates = numpy.insert(all_one_rates, 0, min_rate); all_one_rates = numpy.insert(all_one_rates,num_ep+1,max_rate)
         opt_rates = numpy.insert(opt_rates, 0, min_rate); opt_rates = numpy.insert(opt_rates,num_ep+1,max_rate)
         
+        
         plt.figure()
         plt.plot(qgnn_rates, y_axis, label = 'QGNN')
-        # plt.plot(gnn_rates, y_axis, label = 'GNN')
+        plt.plot(gnn_rates, y_axis, label = 'GNN')
         plt.plot(opt_rates, y_axis, label = 'Optimal')
         plt.plot(all_one_rates, y_axis, label = 'Maximum Power')
         plt.xlabel('Minimum rate [bps/Hz]', {'fontsize':16})

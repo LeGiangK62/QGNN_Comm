@@ -179,12 +179,14 @@ class QGNN(nn.Module):
     def forward(self, x_dict, edge_attr_dict, edge_index_dict, batch_dict):        
         # Prepocess node and edge features - To the same feature dim
         for node_type, node_feat in x_dict.items():
-            x_dict[node_type] = input_process(self.input_node[node_type](node_feat.float()))
-            
+            # x_dict[node_type] = input_process(self.input_node[node_type](node_feat.float()))
+            x_dict[node_type] = self.input_node[node_type](node_feat.float())
+
         for edge_type, edge_index in edge_index_dict.items():
             src_type, _, dst_type = edge_type
-            edge_attr_dict[edge_type] = input_process(self.input_edge[dst_type](edge_attr_dict[edge_type].float()))
-        
+            # edge_attr_dict[edge_type] = input_process(self.input_edge[dst_type](edge_attr_dict[edge_type].float()))
+            edge_attr_dict[edge_type] = self.input_edge[dst_type](edge_attr_dict[edge_type].float())
+
         for i in range(self.hop_neighbor):
             for edge_type, edge_index in edge_index_dict.items():
                 src_type, _, dst_type = edge_type
