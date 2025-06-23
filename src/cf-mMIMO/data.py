@@ -37,8 +37,9 @@ class cfHetGraphDataset(Dataset):
         edge_index = torch.tensor(self.adj, dtype=torch.long).T.contiguous()
         edge_index_t = torch.tensor(self.adj_t, dtype=torch.long).T.contiguous()
 
-        ue_feat = torch.zeros((self.KM[0], 1), dtype=torch.float32)
-        ap_feat = torch.zeros((self.KM[1], 1), dtype=torch.float32)
+        all_edge_mtx = torch.tensor(H, dtype=torch.float32)
+        ue_feat = torch.mean(all_edge_mtx.T, dim=1, keepdim=True) # torch.zeros((self.KM[0], 1), dtype=torch.float32)
+        ap_feat = torch.mean(all_edge_mtx, dim=1, keepdim=True) # torch.zeros((self.KM[1], 1), dtype=torch.float32)
 
         # edge_sum_ue = edge_feat.view(self.KM[0], self.KM[1], 2).sum(dim=1)
         # edge_sum_ap = edge_feat.view(self.KM[0], self.KM[1], 2).sum(dim=0).reshape(self.KM[1], 2)
