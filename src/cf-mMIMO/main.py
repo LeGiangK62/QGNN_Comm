@@ -14,6 +14,7 @@ from comm_utils import normalize_data, rate_loss
 from data import cfGraphDataset, load_cf_dataset, cfHetGraphDataset
 
 from model import QGNN
+from baseline import RGCN
 
 from datetime import datetime
 import time
@@ -61,6 +62,7 @@ def get_args():
 
     
     # Debug options
+    parser.add_argument('--pre_train', type=str, default=None)
     parser.add_argument('--plot', action='store_true', help='Enable plotting')
     parser.add_argument('--save_model', action='store_true', help='Enable saving model')
     parser.add_argument('--gradient', action='store_true', help='Enable gradient saving')
@@ -145,7 +147,7 @@ def main(args):
             hop_neighbor=args.num_gnn_layers,
         )
     elif args.model == 'gnn':
-        from baseline import GNN_Cf, RGCN
+        from baseline import GNN_Cf
         # model = GNN_Cf(
         #     node_input_dim=node_input_dim,
         #     edge_input_dim=edge_input_dim,
@@ -172,58 +174,65 @@ def main(args):
     testing_sinr = []
     model.train()
     
-    model_save = os.path.join(result_dir, 'model', f"{timestamp}_{args.model}_{args.epochs}_{args.lr}_CF.pt")
-    early_stopping = EarlyStopping(patience=10, save_path=model_save)
     print(f"\n ===={timestamp}==== ")
-    print(f"Training model with {args.graphlet_size} graphlet size with {args.epochs} epochs, "
-          f"learning rate {args.lr}, step size {args.step_size}, and gamma {args.gamma}.")
-    if args.step_plot == 0:
-        step_plot = args.epochs // 10 if args.epochs > 10 else 1
-    start = time.time()
-    for epoch in range(args.epochs):
-        # Train the model
-        avg_train_loss = train(model, train_loader, optimizer)
-        avg_test_sinr = test(model, test_loader)
-        scheduler.step()
-        if args.save_model:
-            early_stopping(-avg_test_sinr, model)
-        training_sinr.append(-avg_train_loss)
-        testing_sinr.append(-avg_test_sinr)
-        if epoch % step_plot == 0:
-            print(f"Epoch {epoch + 1}/{args.epochs}, Training loss: {avg_train_loss:.4f}, "
-                  f"Training SINR: {training_sinr[-1]:.4f}, Testing SINR: {testing_sinr[-1]:.4f}")
     
-    
-    end = time.time()
-    print(f"Total execution time: {end - start:.6f} seconds")
-    
-    if args.plot:
-        numpy.savez_compressed(
-            npz_path, 
-            epoch=numpy.arange(1, args.epochs + 1), 
-            train_sinr=training_sinr, 
-            test_sinr=testing_sinr
-        )
-        epochs_range = range(1, args.epochs + 1)
-        plt.figure(figsize=(10, 5))
+    if args.pre_train is not None:
+        model_save = os.path.join(result_dir, 'model', f"{args.pre_train}_{args.model}_{args.epochs}_{args.lr}_CF.pt")
+        model.load_state_dict(torch.load(model_save, map_location='cpu'))
+        print(f"Pre-trained model loaded from {model_save}")
+        model.eval()
+    else:
+        model_save = os.path.join(result_dir, 'model', f"{timestamp}_{args.model}_{args.epochs}_{args.lr}_CF.pt")
+        early_stopping = EarlyStopping(patience=10, save_path=model_save)
+        print(f"Training model with {args.graphlet_size} graphlet size with {args.epochs} epochs, "
+            f"learning rate {args.lr}, step size {args.step_size}, and gamma {args.gamma}.")
+        if args.step_plot == 0:
+            step_plot = args.epochs // 10 if args.epochs > 10 else 1
+        start = time.time()
+        for epoch in range(args.epochs):
+            # Train the model
+            avg_train_loss = train(model, train_loader, optimizer)
+            avg_test_sinr = test(model, test_loader)
+            scheduler.step()
+            if args.save_model:
+                early_stopping(-avg_test_sinr, model)
+            training_sinr.append(-avg_train_loss)
+            testing_sinr.append(-avg_test_sinr)
+            if epoch % step_plot == 0:
+                print(f"Epoch {epoch + 1}/{args.epochs}, Training loss: {avg_train_loss:.4f}, "
+                    f"Training SINR: {training_sinr[-1]:.4f}, Testing SINR: {testing_sinr[-1]:.4f}")
+        
+        
+        end = time.time()
+        print(f"Total execution time: {end - start:.6f} seconds")
+        
+        if args.plot:
+            numpy.savez_compressed(
+                npz_path, 
+                epoch=numpy.arange(1, args.epochs + 1), 
+                train_sinr=training_sinr, 
+                test_sinr=testing_sinr
+            )
+            epochs_range = range(1, args.epochs + 1)
+            plt.figure(figsize=(10, 5))
 
-        plt.subplot(1, 2, 1)
-        plt.plot(epochs_range, [-x for x in training_sinr], label="Train Loss")
-        plt.title(f"Training Loss ({args.graphlet_size}-node Graphlet)")
-        plt.xlabel("Epoch")
-        plt.ylabel("Loss")
-        plt.legend()
+            plt.subplot(1, 2, 1)
+            plt.plot(epochs_range, [-x for x in training_sinr], label="Train Loss")
+            plt.title(f"Training Loss ({args.graphlet_size}-node Graphlet)")
+            plt.xlabel("Epoch")
+            plt.ylabel("Loss")
+            plt.legend()
 
-        plt.subplot(1, 2, 2)
-        plt.plot(epochs_range, training_sinr, label="Train SINR")
-        plt.plot(epochs_range, testing_sinr, label="Test SINR")
-        plt.title(f"SINR vs Epochs")
-        plt.xlabel("Epoch")
-        plt.ylabel("SINR (dB)")
-        plt.legend()
+            plt.subplot(1, 2, 2)
+            plt.plot(epochs_range, training_sinr, label="Train SINR")
+            plt.plot(epochs_range, testing_sinr, label="Test SINR")
+            plt.title(f"SINR vs Epochs")
+            plt.xlabel("Epoch")
+            plt.ylabel("SINR (dB)")
+            plt.legend()
 
-        plt.tight_layout()
-        plt.savefig(plot_train_path, dpi=300)
+            plt.tight_layout()
+            plt.savefig(plot_train_path, dpi=300)
     
     if args.results:     
         # main baseline model
