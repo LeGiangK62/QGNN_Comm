@@ -9,7 +9,7 @@ import scipy.io
 from torch_geometric.loader import DataLoader
 
 
-from utils import train, test, EarlyStopping
+from utils import train, test, EarlyStopping, save_checkpoint
 from comm_utils import normalize_data, rate_loss
 from data import cfGraphDataset, load_cf_dataset, cfHetGraphDataset
 
@@ -178,7 +178,8 @@ def main(args):
     
     if args.pre_train is not None:
         model_save = os.path.join(result_dir, 'model', f"{args.pre_train}_{args.model}_{args.epochs}_{args.lr}_CF.pt")
-        model.load_state_dict(torch.load(model_save, map_location='cpu'))
+        checkpoint = torch.load(model_save, map_location='cpu')
+        model.load_state_dict(checkpoint['model_state_dict'])
         print(f"Pre-trained model loaded from {model_save}")
         model.eval()
     else:
@@ -195,13 +196,15 @@ def main(args):
             avg_test_sinr = test(model, test_loader)
             scheduler.step()
             if args.save_model:
-                early_stopping(-avg_test_sinr, model)
+                # early_stopping(-avg_test_sinr, model)
+                save_checkpoint(model, optimizer, model_save)
             training_sinr.append(-avg_train_loss)
             testing_sinr.append(-avg_test_sinr)
             if epoch % step_plot == 0:
                 print(f"Epoch {epoch + 1}/{args.epochs}, Training loss: {avg_train_loss:.4f}, "
                     f"Training SINR: {training_sinr[-1]:.4f}, Testing SINR: {testing_sinr[-1]:.4f}")
         
+        print(f"Model checkpoint saved to {model_save}")
         
         end = time.time()
         print(f"Total execution time: {end - start:.6f} seconds")
