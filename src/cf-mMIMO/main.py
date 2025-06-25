@@ -181,7 +181,7 @@ def main(args):
     model_save = os.path.join(result_dir, 'model', f"{timestamp}_{args.model}_{args.epochs}_{args.lr}_CF.pt")
     early_stopping = EarlyStopping(patience=10, save_path=model_save)
     if args.pre_train is not None:
-        pre_trained_path = os.path.join(result_dir, 'model', f"{args.pre_train}_{args.model}_{args.epochs}_{args.lr}_CF.pt")
+        pre_trained_path = os.path.join(result_dir, 'model', f"{args.pre_train}")
         checkpoint = torch.load(pre_trained_path, map_location='cpu')
         model.load_state_dict(checkpoint['model_state_dict'])
         print(f"Pre-trained model loaded from {pre_trained_path}")
