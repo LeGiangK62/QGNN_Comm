@@ -260,7 +260,7 @@ def main(args):
         base_optimizer = optim.Adam(base_model.parameters(), lr=args.lr)
         base_scheduler = torch.optim.lr_scheduler.StepLR(base_optimizer, step_size=args.step_size, gamma=args.gamma)
 
-        for epoch in range(args.epochs):
+        for epoch in range(100):
             _ = train(base_model, train_loader, base_optimizer)
             _ = test(base_model, test_loader)
             base_scheduler.step()
