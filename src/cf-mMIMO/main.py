@@ -62,7 +62,8 @@ def get_args():
 
     
     # Debug options
-    parser.add_argument('--pre_train', type=str, default=None)
+    parser.add_argument('--pre_train', type=str, default=None, help='Load the pre-trained model (timestamp as name)')
+    parser.add_argument('--continue_train', action='store_true', help='Continue training from pre-trained model')
     parser.add_argument('--plot', action='store_true', help='Enable plotting')
     parser.add_argument('--save_model', action='store_true', help='Enable saving model')
     parser.add_argument('--gradient', action='store_true', help='Enable gradient saving')
@@ -176,17 +177,26 @@ def main(args):
     
     print(f"\n ===={timestamp}==== ")
     
+    train_flag = args.continue_train and (args.pre_train != None)
+    model_save = os.path.join(result_dir, 'model', f"{timestamp}_{args.model}_{args.epochs}_{args.lr}_CF.pt")
+    early_stopping = EarlyStopping(patience=10, save_path=model_save)
     if args.pre_train is not None:
-        model_save = os.path.join(result_dir, 'model', f"{args.pre_train}_{args.model}_{args.epochs}_{args.lr}_CF.pt")
-        checkpoint = torch.load(model_save, map_location='cpu')
+        pre_trained_path = os.path.join(result_dir, 'model', f"{args.pre_train}_{args.model}_{args.epochs}_{args.lr}_CF.pt")
+        checkpoint = torch.load(pre_trained_path, map_location='cpu')
         model.load_state_dict(checkpoint['model_state_dict'])
-        print(f"Pre-trained model loaded from {model_save}")
-        model.eval()
-    else:
-        model_save = os.path.join(result_dir, 'model', f"{timestamp}_{args.model}_{args.epochs}_{args.lr}_CF.pt")
-        early_stopping = EarlyStopping(patience=10, save_path=model_save)
+        print(f"Pre-trained model loaded from {pre_trained_path}")
+        if not args.continue_train: 
+            model.eval()
+            print("Skip training...")
+        else:
+            print(f"Continuing training model with {args.graphlet_size} graphlet size with {args.epochs} epochs, "
+            f"learning rate {args.lr}, step size {args.step_size}, and gamma {args.gamma}.")
+    else: 
         print(f"Training model with {args.graphlet_size} graphlet size with {args.epochs} epochs, "
             f"learning rate {args.lr}, step size {args.step_size}, and gamma {args.gamma}.")
+            
+    if train_flag or args.pre_train is None:
+        model.train()
         if args.step_plot == 0:
             step_plot = args.epochs // 10 if args.epochs > 10 else 1
         start = time.time()
@@ -204,7 +214,8 @@ def main(args):
                 print(f"Epoch {epoch + 1}/{args.epochs}, Training loss: {avg_train_loss:.4f}, "
                     f"Training SINR: {training_sinr[-1]:.4f}, Testing SINR: {testing_sinr[-1]:.4f}")
         
-        print(f"Model checkpoint saved to {model_save}")
+        if args.save_model:
+            print(f"Model checkpoint saved to {model_save}")
         
         end = time.time()
         print(f"Total execution time: {end - start:.6f} seconds")
