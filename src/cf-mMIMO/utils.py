@@ -99,10 +99,13 @@ def test(model, test_loader):
     return total_loss / total_sample
 
 
-def save_checkpoint(model, optimizer, save_path):
+def save_checkpoint(model, optimizer, epoch, training_sinr, testing_sinr, save_path):
     checkpoint = {
+        'epoch': epoch + 1,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
+        'train_sinr': training_sinr,
+        'test_sinr': testing_sinr,
     }
     torch.save(checkpoint, save_path)
 

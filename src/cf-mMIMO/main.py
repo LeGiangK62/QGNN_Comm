@@ -201,6 +201,12 @@ def main(args):
             step_plot = args.epochs // 10 if args.epochs > 10 else 1
         start = time.time()
         for epoch in range(args.epochs):
+            numpy.savez_compressed(
+                npz_path, 
+                epoch=np.arange(1, epoch+2),
+                train_sinr=np.array(training_sinr),
+                test_sinr=np.array(testing_sinr)
+            )
             # Train the model
             avg_train_loss = train(model, train_loader, optimizer)
             avg_test_sinr = test(model, test_loader)
@@ -267,8 +273,10 @@ def main(args):
             
             
         print("Evaluating results...")
-        eval_loader = DataLoader(test_dataset, batch_size=args.test_size, shuffle=False)
-
+        eval_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
+        qgnn_rates = []
+        gnn_rates = []
+        all_one_rates = []
         for data, direct, cross in eval_loader:
             bs = data.num_graphs
             M = direct.shape[1]
@@ -278,14 +286,18 @@ def main(args):
             output = model(data.x_dict, data.edge_attr_dict, data.edge_index_dict, data.batch_dict) # .reshape(bs, -1)
             # output = output.reshape(bs,-1)
             power = output.reshape(bs, M)
-            qgnn_rates = rate_loss(power, direct, cross, True).flatten().detach().numpy()
+            qgnn_rates.append(rate_loss(power, direct, cross, True).flatten().detach().numpy())
             
             base_output = base_model(data.x_dict, data.edge_attr_dict, data.edge_index_dict, data.batch_dict) # .reshape(bs, -1)
             base_power = base_output.reshape(bs, M)
-            gnn_rates = rate_loss(base_power, direct, cross, True).flatten().detach().numpy()
-            full = torch.ones_like(power)
-            all_one_rates = rate_loss(full, direct, cross, True).flatten().numpy()
+            gnn_rates.append(rate_loss(base_power, direct, cross, True).flatten().detach().numpy())
             
+            full = torch.ones_like(power)
+            all_one_rates.append(rate_loss(full, direct, cross, True).flatten().numpy())
+        
+        qgnn_rates = numpy.concatenate(qgnn_rates)
+        gnn_rates = numpy.concatenate(gnn_rates)
+        all_one_rates = numpy.concatenate(all_one_rates)
         opt_rates = opt_rate
         num_ep = args.test_size
         min_rate, max_rate = 0, 2
