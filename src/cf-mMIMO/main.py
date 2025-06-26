@@ -203,9 +203,9 @@ def main(args):
         for epoch in range(args.epochs):
             numpy.savez_compressed(
                 npz_path, 
-                epoch=np.arange(1, epoch+2),
-                train_sinr=np.array(training_sinr),
-                test_sinr=np.array(testing_sinr)
+                epoch=numpy.arange(1, epoch+2),
+                train_sinr=numpy.array(training_sinr),
+                test_sinr=numpy.array(testing_sinr)
             )
             # Train the model
             avg_train_loss = train(model, train_loader, optimizer)
@@ -266,7 +266,7 @@ def main(args):
         base_optimizer = optim.Adam(base_model.parameters(), lr=args.lr)
         base_scheduler = torch.optim.lr_scheduler.StepLR(base_optimizer, step_size=args.step_size, gamma=args.gamma)
 
-        for epoch in range(100):
+        for epoch in range(50):
             _ = train(base_model, train_loader, base_optimizer)
             _ = test(base_model, test_loader)
             base_scheduler.step()
