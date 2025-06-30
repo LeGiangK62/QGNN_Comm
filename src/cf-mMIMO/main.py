@@ -145,6 +145,7 @@ def main(args):
         model = QGNN(
             q_dev=q_dev,
             w_shapes=w_shapes_dict,
+            hidden_dim=args.hidden_channels,
             node_input_dim=node_input_dim,
             edge_input_dim=edge_input_dim,
             graphlet_size=args.node_qubit,

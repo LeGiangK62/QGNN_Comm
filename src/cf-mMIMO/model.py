@@ -64,7 +64,7 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     # return probs
     # expval = [qml.expval(qml.PauliZ(w)) for w in [center_wire, num_qbit, num_qbit+1]]
     expval = [
-        qml.expval(qml.PauliZ(center_wire)),
+        qml.expval(qml.PauliX(center_wire)),
         qml.expval(qml.PauliX(num_qbit)),
         qml.expval(qml.PauliX(num_qbit+1))
     ]
@@ -107,10 +107,10 @@ def input_process(tensor):
     return torch.tanh(tensor) * np.pi
 
 class QGNN(nn.Module):
-    def __init__(self, q_dev, w_shapes, node_input_dim={'UE': 1, 'AP': 1}, edge_input_dim={'UE': 2, 'AP': 2},
+    def __init__(self, q_dev, w_shapes, hidden_dim, node_input_dim={'UE': 1, 'AP': 1}, edge_input_dim={'UE': 2, 'AP': 2},
                  graphlet_size=4, hop_neighbor=1, meta=['UE', 'AP']):
         super().__init__()
-        self.hidden_dim = 128
+        self.hidden_dim = hidden_dim
         self.graphlet_size = graphlet_size
         self.hop_neighbor = hop_neighbor
         self.pqc_dim = 2 # number of feat per pqc for each node
