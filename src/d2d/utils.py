@@ -138,6 +138,14 @@ def sum_weighted_rate(h, p, w, n0):
     return torch.sum(w_sumrate)
 
 
+def save_checkpoint(model, optimizer, save_path):
+    checkpoint = {
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }
+    torch.save(checkpoint, save_path)
+
+
 class EarlyStopping:
     def __init__(self, patience=10, delta=0.0, save_path="best_model.pt"):
         self.patience = patience
