@@ -65,8 +65,8 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     # expval = [qml.expval(qml.PauliZ(w)) for w in [center_wire, num_qbit, num_qbit+1]]
     expval = [
         qml.expval(qml.PauliX(center_wire)),
-        qml.expval(qml.PauliX(num_qbit)),
-        qml.expval(qml.PauliX(num_qbit+1))
+        qml.expval(qml.PauliY(num_qbit)),
+        qml.expval(qml.PauliZ(num_qbit+1))
     ]
     # expval = [
     #     qml.expval(qml.PauliZ(center_wire)),
@@ -156,7 +156,7 @@ class QGNN(nn.Module):
                 self.qconvs[f"lay{i+1}_{node_type}"] = qml.qnn.TorchLayer(qnode, w_shapes, uniform_pi_init)
 
                 self.upds[f"lay{i+1}_{node_type}"] = MLP(
-                        [self.pqc_dim + self.pqc_out, self.hidden_dim, self.pqc_dim],
+                        [self.pqc_dim + self.pqc_out, self.hidden_dim, self.hidden_dim, self.pqc_dim],
                         act='leaky_relu',
                         norm=None,
                         dropout=0.3
@@ -166,7 +166,7 @@ class QGNN(nn.Module):
                 self.norms[f"lay{i+1}_{node_type}"] = nn.BatchNorm1d(self.pqc_dim)
 
         self.final_layer = MLP(
-                [self.final_dim, self.hidden_dim, 1],
+                [self.final_dim, self.hidden_dim, self.hidden_dim, 1],
                 act='leaky_relu',
                 # norm=None,
                 norm='batch_norm', 
