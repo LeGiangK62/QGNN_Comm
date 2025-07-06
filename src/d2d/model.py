@@ -8,7 +8,7 @@ from torch_geometric.nn import MLP, global_add_pool, global_mean_pool, global_ma
 from utils import star_subgraph
 
 
-def message_passing_pqc(strong, twodesign, inits, wires):
+def message_passing_pqc_aux(strong, twodesign, inits, wires):
     edge, center, neighbor, ancilla1, ancilla2 = wires
 
     qml.CRX(inits[0, 0], wires=[neighbor, ancilla1])
@@ -18,6 +18,69 @@ def message_passing_pqc(strong, twodesign, inits, wires):
     qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor, ancilla1])
     qml.StronglyEntanglingLayers(weights=strong[1], wires=[ancilla1, neighbor, ancilla2])
 
+
+def qgcn_enhance_layer_aux(inputs, spreadlayer, strong, twodesign, inits, update):
+    edge_feat_dim = feat_dim = node_feat_dim = 2
+    inputs = inputs.reshape(-1,feat_dim)
+    
+    # The number of avaible nodes and edges
+    total_shape = inputs.shape[0]
+    num_nodes = (total_shape+1)//2
+    num_edges = num_nodes - 1
+    
+    adjacency_matrix, vertex_features = inputs[:num_edges,:], inputs[num_edges:,:]
+
+    # The number of qubits assiged to each node and edge
+    num_qbit = spreadlayer.shape[1]
+    num_nodes_qbit = (num_qbit+1)//2
+    num_edges_qbit = num_nodes_qbit - 1
+    
+    center_wire = num_edges_qbit
+    
+    
+    for i in range(num_edges):
+        qml.RY(adjacency_matrix[i][0], wires=i)
+        qml.RZ(adjacency_matrix[i][1], wires=i)
+        # qml.RX(adjacency_matrix[i][2], wires=i)
+    
+    for i in range(num_nodes):
+        qml.RY(vertex_features[i][0], wires=center_wire+i)
+        qml.RZ(vertex_features[i][1], wires=center_wire+i)
+        # qml.RX(vertex_features[i][2], wires=center_wire+i)
+    
+    
+    for i in range(num_edges):
+
+        message_passing_pqc_aux(strong=strong, twodesign=twodesign, inits=inits, 
+                            wires=[i, center_wire, center_wire+i+1, num_qbit, num_qbit+1])
+
+    qml.StronglyEntanglingLayers(
+        weights=update[0], 
+        wires=[center_wire, num_qbit, num_qbit+1]
+        )
+    # probs = qml.probs(wires=[center_wire, num_qbit, num_qbit+1])
+    # return probs
+    # expval = [qml.expval(qml.PauliZ(w)) for w in [center_wire, num_qbit, num_qbit+1]]
+    expval = [
+        qml.expval(qml.PauliX(center_wire)),
+        qml.expval(qml.PauliX(num_qbit)),
+        qml.expval(qml.PauliX(num_qbit+1))
+    ]
+    return expval
+
+## Todo: New Approach, Message and Aggregate Seperate
+
+    
+def message_passing_pqc(strong, twodesign, inits, wires):
+    edge, center, neighbor = wires
+
+    qml.CRX(inits[0, 0], wires=[neighbor, edge])
+    qml.CRY(inits[0, 1], wires=[edge, neighbor])
+    # qml.CRZ(inits[0, 2], wires=[neighbor, ancilla2])
+    # qml.CRY(inits[0, 3], wires=[edge, ancilla2])
+    qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor])
+    # qml.StronglyEntanglingLayers(weights=strong[1], wires=[ancilla1, neighbor, ancilla2])
+    
 
 def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     edge_feat_dim = feat_dim = node_feat_dim = 2
@@ -50,24 +113,19 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     
     
     for i in range(num_edges):
-
         message_passing_pqc(strong=strong, twodesign=twodesign, inits=inits, 
-                            wires=[i, center_wire, center_wire+i+1, num_qbit, num_qbit+1])
+                            wires=[i, center_wire, center_wire+i+1])
+    
+    for i in range(num_edges):
+        qml.StronglyEntanglingLayers(weights=update[i],wires=[center_wire, center_wire+i+1])
 
-    qml.StronglyEntanglingLayers(
-        weights=update[0], 
-        wires=[center_wire, num_qbit, num_qbit+1]
-        )
     # probs = qml.probs(wires=[center_wire, num_qbit, num_qbit+1])
     # return probs
     # expval = [qml.expval(qml.PauliZ(w)) for w in [center_wire, num_qbit, num_qbit+1]]
     expval = [
         qml.expval(qml.PauliX(center_wire)),
-        qml.expval(qml.PauliX(num_qbit)),
-        qml.expval(qml.PauliX(num_qbit+1))
     ]
     return expval
-
 
 def small_normal_init(tensor):
     return torch.nn.init.normal_(tensor, mean=0.0, std=0.1)
@@ -106,7 +164,7 @@ class QGNN(nn.Module):
         self.pqc_dim = 2 # number of feat per pqc for each node
         self.chunk = 1
         self.final_dim = self.pqc_dim * self.chunk # 2
-        self.pqc_out = 3 # probs?
+        self.pqc_out = 1 # probs?
         
         
         self.qconvs = nn.ModuleDict()
@@ -149,11 +207,21 @@ class QGNN(nn.Module):
                 norm=None, dropout=0.3
         ) 
         
+        
+    def sampling_neighbors(self, neighbor_ids, edge_ids):
+        # if neighbor_ids.numel() == 0:
+        #     return neighbor_ids, edge_ids
+
+        if neighbor_ids.numel() > self.graphlet_size - 1:
+            perm = torch.randperm(neighbor_ids.numel())[:self.graphlet_size - 1]
+            neighbor_ids = neighbor_ids[perm]
+            edge_ids = edge_ids[perm]
+        return neighbor_ids, edge_ids
+            
+            
     def forward(self, node_feat, edge_attr, edge_index, batch):
         edge_index = edge_index.t()
         num_nodes = node_feat.size(0)
-        num_nodes_model = self.graphlet_size
-        num_edges_model = self.graphlet_size - 1
         if edge_attr is None:
             edge_attr = torch.ones((edge_index.size(0), self.edge_input_dim), device=node_feat.device)
         
@@ -191,23 +259,39 @@ class QGNN(nn.Module):
             centers = []
             updates = []
             
-            for sub in subgraphs:
-                center, *neighbors = sub
+            ## FIXME: #####################################
+            dst_indices = torch.unique(edge_index[:,1]).tolist()
+            for dst_idx in dst_indices:
+                neighbor_mask = (edge_index[:,1] == dst_idx)
+                neighbor_ids = edge_index[:,0][neighbor_mask]
+                edge_ids = torch.nonzero(neighbor_mask, as_tuple=False).squeeze()
+                neighbor_ids, edge_ids  = self.sampling_neighbors(neighbor_ids, edge_ids)
+                
+                
+                center = node_features[dst_idx]
+                neighbors = node_features[neighbor_ids]
+                n_feat = torch.cat([center.unsqueeze(0), neighbors], dim=0)
+                e_feat = edge_features[edge_ids.view(-1)]
+                inputs = torch.cat([e_feat, n_feat], dim=0)      
+            ## TODO: #######################################
+            # for sub in subgraphs:
+            #     center, *neighbors = sub
 
-                n_feat = node_features[sub] 
-                # edge_idxs = [ idx_dict[(center, int(n))] for n in neighbors ]
-                edge_idxs = [
-                    idx_dict[(min(center, int(n)), max(center, int(n)))] 
-                    for n in neighbors 
-                ]
-                e_feat    = edge_features[edge_idxs]  
-                inputs = torch.cat([e_feat, n_feat], dim=0)        
+            #     n_feat = node_features[sub] 
+            #     # edge_idxs = [ idx_dict[(center, int(n))] for n in neighbors ]
+            #     edge_idxs = [
+            #         idx_dict[(min(center, int(n)), max(center, int(n)))] 
+            #         for n in neighbors 
+            #     ]
+            #     e_feat    = edge_features[edge_idxs]  
+            #     inputs = torch.cat([e_feat, n_feat], dim=0)        
+            ## TODO: #####################################
 
                 all_msg = q_layer(inputs.flatten())
                 aggr = all_msg
-                update_vec = upd_layer(torch.cat([node_features[center], aggr], dim=0))
+                update_vec = upd_layer(torch.cat([node_features[dst_idx], aggr], dim=0))
             
-                centers.append(center)
+                centers.append(dst_idx)
                 updates.append(update_vec)
             
             centers = torch.tensor(centers, device=node_features.device)
@@ -216,7 +300,8 @@ class QGNN(nn.Module):
             updates_node = updates_node.index_add(0, centers, updates)
             
             # node_features = norm_layer(updates_node + node_features)    
-            node_features = updates_node + node_features
+            # node_features = updates_node + node_features
+            node_features = F.relu(norm_layer(updates_node + node_features))
         # graph_embedding = global_mean_pool(node_features, batch)
         
         return torch.sigmoid(self.final_layer(node_features))

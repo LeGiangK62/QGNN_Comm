@@ -87,17 +87,22 @@ def main(args):
     n_qubits = args.node_qubit + edge_qubit
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cpu") 
-    q_dev = qml.device("default.qubit", wires=n_qubits + 2) # number of ancilla qubits
+    q_dev = qml.device("default.qubit", wires=n_qubits) # + 2) # number of ancilla qubits
     if args.step_plot == 0:
         step_plot = args.epochs // 10 if args.epochs > 10 else 1
             
     # PQC weight shape settings
     w_shapes_dict = {
         'spreadlayer': (0, n_qubits, 1),
-        'strong': (2, args.num_ent_layers, 3, 3), # 3
+        # OLD
         # 'strong': (3, args.num_ent_layers, 2, 3), # 2
-        'inits': (1, 4),
-        'update': (1, args.num_ent_layers, 3, 3), # (1, args.num_ent_layers, 2, 3)
+        # 'strong': (2, args.num_ent_layers, 3, 3), # 3
+        # 'inits': (1, 4),
+        # 'update': (1, args.num_ent_layers, 3, 3), # (1, args.num_ent_layers, 2, 3)
+        # NEW
+        'inits': (1, 2), 
+        'strong': (1, args.num_ent_layers, 2, 3), 
+        'update': (args.graphlet_size, args.num_ent_layers, 2, 3),
         'twodesign': (0, args.num_ent_layers, 1, 2)
     }
     
