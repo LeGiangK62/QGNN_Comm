@@ -1,10 +1,9 @@
 import numpy as np
 
-def generate_wGaussian(K, num_H, var_noise=1, Pmin=0, seed=2017):
+def generate_wGaussian(K, num_H, var_noise=1, Pmax=1, seed=2017):
     # H[:,j,k] channel from k tx to j rx
     print('Generate Data ... (seed = %d)' % seed)
     np.random.seed(seed)
-    Pmax = 1
     Pini = Pmax*np.ones((num_H,K,1) )
     alpha = np.random.rand(num_H,K)
     # alpha = np.ones((num_H,K))

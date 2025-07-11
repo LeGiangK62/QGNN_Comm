@@ -21,7 +21,7 @@ class d2dGraphDataset(Dataset):
 
     def generate_data(self):
         channel_matrices, power_matrices, weight_matrices, _ = generate_wGaussian(
-            self.num_D2D, self.num_samples, seed=self.seed, var_noise = self.n0
+            self.num_D2D, self.num_samples, seed=self.seed, var_noise = self.n0, Pmax=self.p_max,
         )
         
         init_x = np.random.rand(self.num_samples, self.num_D2D, 1)
@@ -39,7 +39,9 @@ class d2dGraphDataset(Dataset):
         W = self.w_sumrate[idx] #.repeat(self.num_D2D, 1)
         x1 = torch.tensor(H.diagonal()[:, None], dtype=torch.float32)
         x2 = torch.tensor(W[:, None], dtype=torch.float32)
-        x = torch.cat([x1, x2], dim=1)  # shape: [num_D2D, 2]
+        x3 = torch.ones(self.num_D2D, 1, dtype=torch.float32) * self.p_max
+        x4 = torch.ones(self.num_D2D, 1, dtype=torch.float32) * self.n0   
+        x = torch.cat([x1, x2, x3, x4], dim=1)  # shape: [num_D2D, 2]
         # Fully connected graph
         edge_index = torch.tensor([
             [i, j] for i in range(self.num_D2D) for j in range(self.num_D2D) if i != j

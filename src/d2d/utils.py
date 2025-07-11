@@ -53,7 +53,7 @@ def star_subgraph(adjacency_matrix, subgraph_size=4):
 
     return subgraph_indices
 
-def train(model, train_loader, optimizer, var):
+def train(model, train_loader, optimizer, var, pmax):
     model.train()
     total_loss = 0
     total_rate = 0
@@ -68,7 +68,7 @@ def train(model, train_loader, optimizer, var):
         channel_matrices = data.x[:,0].reshape(bs,-1)
         weight_sumrates = data.x[:,1].reshape(bs,-1)
         output = model(data.x, data.edge_attr, data.edge_index, data.batch).float() #torch.Size([320, 1])
-        output = output.reshape(bs,-1,1)
+        output = output.reshape(bs,-1,1) * pmax
         loss = sum_weighted_rate(channel_matrices, output, weight_sumrates, var)
         loss = torch.neg(loss)
 
@@ -85,7 +85,7 @@ def train(model, train_loader, optimizer, var):
     return total_loss / total_graph, total_rate / total_graph
 
 
-def test(model, test_loader, var):
+def test(model, test_loader, var, pmax):
     model.eval()
     total_loss = 0
     total_rate = 0
@@ -98,7 +98,7 @@ def test(model, test_loader, var):
             channel_matrices = data.x[:,0].reshape(bs,-1)
             weight_sumrates = data.x[:,1].reshape(bs,-1)
             output = model(data.x, data.edge_attr, data.edge_index, data.batch).float() #torch.Size([320, 1])
-            output = output.reshape(bs,-1,1)
+            output = output.reshape(bs,-1,1) * pmax
             sum_rate = sum_weighted_rate(channel_matrices, output, weight_sumrates, var)
             total_rate += sum_rate.item()
             total_graph += data.num_graphs

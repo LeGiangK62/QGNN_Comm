@@ -82,7 +82,7 @@ def main(args):
     n_qubits = args.node_qubit + edge_qubit
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cpu") 
-    q_dev = qml.device("default.qubit", wires=n_qubits)# + 2) # number of ancilla qubits
+    q_dev = qml.device("default.qubit", wires=n_qubits + 1) # number of ancilla qubits
     if args.step_plot == 0:
         step_plot = args.epochs // 10 if args.epochs > 10 else 1
             
@@ -96,7 +96,7 @@ def main(args):
         # NEW
         'inits': (1, 2), 
         'strong': (1, args.num_ent_layers, 2, 3), 
-        'update': (args.graphlet_size, args.num_ent_layers, 2, 3),
+        'update': (args.graphlet_size, args.num_ent_layers, 3, 3),
         # 'update': (1, args.num_ent_layers, 3, 3), # (1, args.num_ent_layers, 2, 3)
         'twodesign': (0, args.num_ent_layers, 1, 2)
     }
@@ -186,8 +186,8 @@ def main(args):
         start = time.time()
         for epoch in range(args.epochs):
             # Train the model
-            avg_train_loss, avg_train_sinr = train(model, train_loader, optimizer, var_noise)
-            avg_test_sinr = test(model, test_loader,var_noise)
+            avg_train_loss, avg_train_sinr = train(model, train_loader, optimizer, var_noise, args.power)
+            avg_test_sinr = test(model, test_loader,var_noise, args.power)
             scheduler.step()
             if args.save_model:
                     # early_stopping(-avg_test_sinr, model)
@@ -246,12 +246,12 @@ def main(args):
         base_optimizer = optim.Adam(base_model.parameters(), lr=args.lr)
         base_scheduler = torch.optim.lr_scheduler.StepLR(base_optimizer, step_size=args.step_size, gamma=args.gamma)
         print("training baseline GNN:...")
-        if args.pre_train is None:
+        if args.pre_train is None or args.continue_train is False:
             pre_train_epoch = 0
         total_epoch = args.epochs + pre_train_epoch
         for epoch in range(total_epoch):
-            _, train_gnn = train(base_model, train_loader, base_optimizer, var_noise)
-            test_gnn = test(base_model, test_loader, var_noise)
+            _, train_gnn = train(base_model, train_loader, base_optimizer, var_noise, args.power)
+            test_gnn = test(base_model, test_loader, var_noise, args.power)
             training_sinr_gnn.append(train_gnn)
             testing_sinr_gnn.append(test_gnn)
             base_scheduler.step()
