@@ -110,12 +110,12 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     
     
     for i in range(num_edges):
-        qml.RZ(adjacency_matrix[i][0], wires=i)
+        qml.RX(adjacency_matrix[i][0], wires=i)
         qml.RZ(adjacency_matrix[i][1], wires=i)
         # qml.RX(adjacency_matrix[i][2], wires=i)
     
     for i in range(num_nodes):
-        qml.RZ(vertex_features[i][0], wires=center_wire+i)
+        qml.RX(vertex_features[i][0], wires=center_wire+i)
         qml.RZ(vertex_features[i][1], wires=center_wire+i)
         # qml.RX(vertex_features[i][2], wires=center_wire+i)
     
@@ -125,13 +125,17 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
                             wires=[i, center_wire, center_wire+i+1])
     
     for i in range(num_edges):
-        qml.StronglyEntanglingLayers(weights=update[i],wires=[center_wire, center_wire+i+1])
+        # # No auxiliary
+        # qml.StronglyEntanglingLayers(weights=update[i],wires=[center_wire, center_wire+i+1])
+        # 2 qubit auxiliary
+        qml.StronglyEntanglingLayers(weights=update[i],wires=[center_wire, center_wire+i+1, num_qbit])
 
     # probs = qml.probs(wires=[center_wire, num_qbit, num_qbit+1])
     # return probs
     # expval = [qml.expval(qml.PauliZ(w)) for w in [center_wire, num_qbit, num_qbit+1]]
     expval = [
         qml.expval(qml.PauliZ(center_wire)),
+        qml.expval(qml.PauliZ(num_qbit)),
     ]
     # expval = [
     #     qml.probs(wires=[center_wire])
@@ -176,7 +180,7 @@ class QGNN(nn.Module):
         self.pqc_dim = 2 # number of feat per pqc for each node
         self.chunk = 1
         self.final_dim = self.pqc_dim * self.chunk # 2
-        self.pqc_out = 1 # probs?
+        self.pqc_out = 2 # probs?
 
 
         self.input_node = nn.ModuleDict()
@@ -200,7 +204,7 @@ class QGNN(nn.Module):
                 act='leaky_relu',
                 # norm=None,
                 norm='batch_norm', 
-                dropout=0.3
+                dropout=0.1
             )
 
             self.input_edge[node_type] = MLP(
@@ -208,7 +212,7 @@ class QGNN(nn.Module):
                 act='leaky_relu',
                 # norm=None,
                 norm='batch_norm', 
-                dropout=0.3
+                dropout=0.1
             )
 
             for i in range(self.hop_neighbor):
@@ -219,7 +223,7 @@ class QGNN(nn.Module):
                         [self.pqc_dim + self.pqc_out, self.hidden_dim, self.hidden_dim, self.pqc_dim],
                         act='leaky_relu',
                         norm=None,
-                        dropout=0.3
+                        dropout=0.1
                 )
 
                 # self.norms[f"lay{i+1}_{node_type}"] = nn.LayerNorm(self.pqc_dim)
@@ -230,7 +234,7 @@ class QGNN(nn.Module):
                 act='leaky_relu',
                 # norm=None,
                 norm='batch_norm', 
-                dropout=0.3
+                dropout=0.1
         )
 
     def sampling_neighbors(self, neighbor_ids, edge_ids):
@@ -298,7 +302,9 @@ class QGNN(nn.Module):
                 updates_node = updates_node.index_add(0, centers, updates)
 
                 # node_features = norm_layer(updates_node + node_features)
-                x_dict[dst_type] = F.relu(norm_layer(x_dict[dst_type] + updates_node))
+                x_dict[dst_type] = norm_layer(x_dict[dst_type] + updates_node)
+                # x_dict[dst_type] = input_process(x_dict[dst_type]) # do not use
 
-        return torch.sigmoid(self.final_layer(x_dict['UE']))
+        # return torch.sigmoid(self.final_layer(x_dict['UE']))
+        return torch.exp(-F.softplus(self.final_layer(x_dict['UE'])))
     

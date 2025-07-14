@@ -87,7 +87,7 @@ def main(args):
     n_qubits = args.node_qubit + edge_qubit
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cpu") 
-    q_dev = qml.device("default.qubit", wires=n_qubits) # + 2) # number of ancilla qubits
+    q_dev = qml.device("default.qubit", wires=n_qubits + 1) # number of ancilla qubits
     if args.step_plot == 0:
         step_plot = args.epochs // 10 if args.epochs > 10 else 1
             
@@ -102,7 +102,7 @@ def main(args):
         # NEW
         'inits': (1, 2), 
         'strong': (1, args.num_ent_layers, 2, 3), 
-        'update': (args.graphlet_size, args.num_ent_layers, 2, 3),
+        'update': (args.graphlet_size, args.num_ent_layers, 3, 3),
         'twodesign': (0, args.num_ent_layers, 1, 2)
     }
     
