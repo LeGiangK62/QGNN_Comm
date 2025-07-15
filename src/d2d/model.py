@@ -318,6 +318,8 @@ class QGNN(nn.Module):
             # node_features = input_process(node_features) # avoid re-applying
         # graph_embedding = global_mean_pool(node_features, batch)
         output = self.final_layer(node_features)
-        output = torch.sigmoid(output)
-        # print(f'output: {output.min().item()} - {output.max().item()}')
+        # output = torch.sigmoid(output)
+        output = F.softplus(output)
+        output = torch.exp(-output)
+        
         return output

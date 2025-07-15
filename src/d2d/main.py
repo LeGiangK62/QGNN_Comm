@@ -231,7 +231,7 @@ def main(args):
         test_wmmse = total_wmmse/num_batch
         # test_fp = total_fp/num_batch
         
-        gnn_train_size = 100
+        gnn_train_size = args.train_size
         train_dataset = d2dGraphDataset(num_samples=gnn_train_size, num_D2D=args.num_nodes, p_max=args.power, n0=var_noise, seed=args.seed)
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
         # main baseline model
@@ -261,20 +261,20 @@ def main(args):
         plt.figure(figsize=(10, 6))
         # QGNN
         plt.plot(range(1, total_epoch + 1), training_sinr,
-                label=f'Training Sum-Rate - QGNN {args.train_size}', markevery=step_plot,
+                label=f'Training Sum-Rate - QGNN', markevery=step_plot,
                 marker='o', linewidth=1.8, color='tab:blue')
 
         plt.plot(range(1, total_epoch + 1), testing_sinr,
-                label=f'Testing  Sum-Rate - QGNN {args.train_size}', markevery=step_plot,
+                label=f'Testing  Sum-Rate - QGNN', markevery=step_plot,
                 marker='s', linewidth=1.8, color='tab:cyan')
 
         # Classical GNN
         plt.plot(range(1, total_epoch + 1), training_sinr_gnn,
-                label=f'Training Sum-Rate - GNN {gnn_train_size}', markevery=step_plot,
+                label=f'Training Sum-Rate - GNN', markevery=step_plot,
                 marker='^', linewidth=1.8, color='tab:orange')
 
         plt.plot(range(1, total_epoch + 1), testing_sinr_gnn,
-                label=f'Testing  Sum-Rate - GNN {gnn_train_size}', markevery=step_plot,
+                label=f'Testing  Sum-Rate - GNN', markevery=step_plot,
                 marker='v', linewidth=1.8, color='tab:red')
 
         # WMMSE baseline

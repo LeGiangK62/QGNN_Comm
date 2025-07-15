@@ -16,8 +16,8 @@ class IGConv(MessagePassing):
     def __init__(self, node_input_dim, edge_input_dim, hidden_channels, **kwargs):
         super(IGConv, self).__init__(aggr='mean', **kwargs)
 
-        self.mlp1 = MLP([node_input_dim + edge_input_dim, hidden_channels, hidden_channels])
-        self.mlp2 = MLP([node_input_dim + hidden_channels, hidden_channels])
+        self.mlp1 = MLP([node_input_dim + edge_input_dim, hidden_channels, hidden_channels*2])
+        self.mlp2 = MLP([node_input_dim + hidden_channels*2, hidden_channels])
         self.mlp2 = Seq(self.mlp2, Seq(Lin(hidden_channels, hidden_channels, bias=True), Sigmoid()))
         self.bn = BN(hidden_channels)
         #self.reset_parameters()
