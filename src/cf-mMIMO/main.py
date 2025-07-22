@@ -87,7 +87,7 @@ def main(args):
     n_qubits = args.node_qubit + edge_qubit
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cpu") 
-    q_dev = qml.device("default.qubit", wires=n_qubits + 1) # number of ancilla qubits
+    q_dev = qml.device("default.qubit", wires=n_qubits + 2) # number of ancilla qubits
     if args.step_plot == 0:
         step_plot = args.epochs // 10 if args.epochs > 10 else 1
             
@@ -102,7 +102,7 @@ def main(args):
         # NEW
         'inits': (1, 2), 
         'strong': (1, args.num_ent_layers, 2, 3), 
-        'update': (args.graphlet_size, args.num_ent_layers, 3, 3),
+        'update': (args.graphlet_size, args.num_ent_layers - 1, 4, 3),
         'twodesign': (0, args.num_ent_layers, 1, 2)
     }
     
@@ -191,13 +191,13 @@ def main(args):
         pre_trained_path = os.path.join(result_dir, 'model', f"model_{args.pre_train}.pt")
         checkpoint = torch.load(pre_trained_path, map_location='cpu')
         model.load_state_dict(checkpoint['model_state_dict'])
-        print(f"Pre-trained model loaded from {pre_trained_path}")
         
         pre_train_npz_path = os.path.join(result_dir, 'cf_train', f"data_{args.pre_train}.npz")
         data = numpy.load(pre_train_npz_path)
         pre_train_epoch = data['epoch'].shape[0]          
         training_sinr = data['train_sinr'].tolist()
         testing_sinr = data['test_sinr'].tolist()
+        print(f"Pre-trained model loaded from {pre_trained_path} with {pre_train_epoch} epochs.")
         if not args.continue_train: 
             model.eval()
             print("Skip training...")
@@ -264,6 +264,7 @@ def main(args):
             plt.xlabel("Epoch")
             plt.ylabel("SINR (dB)")
             plt.legend()
+            plt.grid()
 
             plt.tight_layout()
             plt.savefig(plot_train_path, dpi=300)

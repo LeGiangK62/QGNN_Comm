@@ -128,7 +128,7 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
         # # No auxiliary
         # qml.StronglyEntanglingLayers(weights=update[i],wires=[center_wire, center_wire+i+1])
         # 2 qubit auxiliary
-        qml.StronglyEntanglingLayers(weights=update[i],wires=[center_wire, center_wire+i+1, num_qbit])
+        qml.StronglyEntanglingLayers(weights=update[i],wires=[center_wire, center_wire+i+1, num_qbit, num_qbit+1])
 
     # probs = qml.probs(wires=[center_wire, num_qbit, num_qbit+1])
     # return probs
@@ -136,6 +136,7 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     expval = [
         qml.expval(qml.PauliZ(center_wire)),
         qml.expval(qml.PauliZ(num_qbit)),
+        qml.expval(qml.PauliZ(num_qbit+1)),
     ]
     # expval = [
     #     qml.probs(wires=[center_wire])
@@ -180,7 +181,7 @@ class QGNN(nn.Module):
         self.pqc_dim = 2 # number of feat per pqc for each node
         self.chunk = 1
         self.final_dim = self.pqc_dim * self.chunk # 2
-        self.pqc_out = 2 # probs?
+        self.pqc_out = 3 # probs?
 
 
         self.input_node = nn.ModuleDict()
@@ -253,11 +254,13 @@ class QGNN(nn.Module):
         for node_type, node_feat in x_dict.items():
             # x_dict[node_type] = input_process(self.input_node[node_type](node_feat.float()))
             x_dict[node_type] = self.input_node[node_type](node_feat.float())
+            x_dict[node_type] = input_process(x_dict[node_type])
 
         for edge_type, edge_index in edge_index_dict.items():
             src_type, _, dst_type = edge_type
             # edge_attr_dict[edge_type] = input_process(self.input_edge[dst_type](edge_attr_dict[edge_type].float()))
             edge_attr_dict[edge_type] = self.input_edge[dst_type](edge_attr_dict[edge_type].float())
+            edge_attr_dict[edge_type] = input_process(edge_attr_dict[edge_type])
 
         for i in range(self.hop_neighbor):
             for edge_type, edge_index in edge_index_dict.items():
@@ -302,9 +305,11 @@ class QGNN(nn.Module):
                 updates_node = updates_node.index_add(0, centers, updates)
 
                 # node_features = norm_layer(updates_node + node_features)
-                x_dict[dst_type] = norm_layer(x_dict[dst_type] + updates_node)
+                # x_dict[dst_type] = norm_layer(x_dict[dst_type] + updates_node)
+                x_dict[dst_type] = x_dict[dst_type] + norm_layer(updates_node)
                 # x_dict[dst_type] = input_process(x_dict[dst_type]) # do not use
 
         # return torch.sigmoid(self.final_layer(x_dict['UE']))
-        return torch.exp(-F.softplus(self.final_layer(x_dict['UE'])))
+        return F.relu(torch.tanh(self.final_layer(x_dict['UE'])))
+        # return torch.exp(-F.softplus(self.final_layer(x_dict['UE'])))
     
