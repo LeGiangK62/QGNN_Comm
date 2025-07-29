@@ -237,6 +237,8 @@ class QGNN(nn.Module):
                 norm='batch_norm', 
                 dropout=0.1
         )
+        
+        self.output_scale = nn.Parameter(torch.ones(1))
 
     def sampling_neighbors(self, neighbor_ids, edge_ids):
         # if neighbor_ids.numel() == 0:
@@ -305,11 +307,12 @@ class QGNN(nn.Module):
                 updates_node = updates_node.index_add(0, centers, updates)
 
                 # node_features = norm_layer(updates_node + node_features)
-                # x_dict[dst_type] = norm_layer(x_dict[dst_type] + updates_node)
-                x_dict[dst_type] = x_dict[dst_type] + norm_layer(updates_node)
+                x_dict[dst_type] = norm_layer(x_dict[dst_type] + updates_node)
+                # x_dict[dst_type] = x_dict[dst_type] + norm_layer(updates_node)
                 # x_dict[dst_type] = input_process(x_dict[dst_type]) # do not use
 
-        # return torch.sigmoid(self.final_layer(x_dict['UE']))
-        return F.relu(torch.tanh(self.final_layer(x_dict['UE'])))
+        return torch.sigmoid(self.final_layer(x_dict['UE']))
+        # return (torch.tanh(self.final_layer(x_dict['UE']) * self.output_scale )+1)/2
+        # return F.relu(torch.tanh(self.final_layer(x_dict['UE'])))
         # return torch.exp(-F.softplus(self.final_layer(x_dict['UE'])))
     
