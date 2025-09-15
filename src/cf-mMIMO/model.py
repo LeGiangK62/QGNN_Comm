@@ -128,15 +128,21 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
         # # No auxiliary
         # qml.StronglyEntanglingLayers(weights=update[i],wires=[center_wire, center_wire+i+1])
         # 2 qubit auxiliary
-        qml.StronglyEntanglingLayers(weights=update[i],wires=[center_wire, center_wire+i+1, num_qbit, num_qbit+1])
+        qml.StronglyEntanglingLayers(weights=update[i],wires=[i, center_wire, center_wire+i+1, num_qbit, num_qbit+1])
 
     # probs = qml.probs(wires=[center_wire, num_qbit, num_qbit+1])
     # return probs
     # expval = [qml.expval(qml.PauliZ(w)) for w in [center_wire, num_qbit, num_qbit+1]]
+    # expval = [
+    #     qml.expval(qml.PauliZ(center_wire)),
+    #     qml.expval(qml.PauliZ(num_qbit)),
+    #     qml.expval(qml.PauliZ(num_qbit+1)),
+    # ]
+    W = [center_wire, num_qbit, num_qbit+1]
     expval = [
-        qml.expval(qml.PauliZ(center_wire)),
-        qml.expval(qml.PauliZ(num_qbit)),
-        qml.expval(qml.PauliZ(num_qbit+1)),
+        qml.expval(qml.PauliZ(W[0]) @ qml.PauliZ(W[1])),
+        qml.expval(qml.PauliZ(W[0]) @ qml.PauliZ(W[2])),
+        qml.expval(qml.PauliZ(W[1]) @ qml.PauliZ(W[2]))
     ]
     # expval = [
     #     qml.probs(wires=[center_wire])
@@ -218,7 +224,7 @@ class QGNN(nn.Module):
 
             for i in range(self.hop_neighbor):
                 qnode = qml.QNode(qgcn_enhance_layer, q_dev,  interface="torch")
-                self.qconvs[f"lay{i+1}_{node_type}"] = qml.qnn.TorchLayer(qnode, w_shapes, uniform_pi_init)
+                self.qconvs[f"lay{i+1}_{node_type}"] = qml.qnn.TorchLayer(qnode, w_shapes, small_normal_init)
 
                 self.upds[f"lay{i+1}_{node_type}"] = MLP(
                         [self.pqc_dim + self.pqc_out, self.hidden_dim, self.hidden_dim, self.pqc_dim],
@@ -231,14 +237,12 @@ class QGNN(nn.Module):
                 self.norms[f"lay{i+1}_{node_type}"] = nn.BatchNorm1d(self.pqc_dim)
 
         self.final_layer = MLP(
-                [self.final_dim, self.hidden_dim, self.hidden_dim, 1],
+                [self.final_dim, self.hidden_dim*2, self.hidden_dim*2, 1],
                 act='leaky_relu',
                 # norm=None,
                 norm='batch_norm', 
                 dropout=0.1
         )
-        
-        self.output_scale = nn.Parameter(torch.ones(1))
 
     def sampling_neighbors(self, neighbor_ids, edge_ids):
         # if neighbor_ids.numel() == 0:
@@ -307,11 +311,14 @@ class QGNN(nn.Module):
                 updates_node = updates_node.index_add(0, centers, updates)
 
                 # node_features = norm_layer(updates_node + node_features)
+                ##
                 x_dict[dst_type] = norm_layer(x_dict[dst_type] + updates_node)
+                ##
+                # x_dict[dst_type] = x_dict[dst_type] + norm_layer( updates_node)
+                ##
                 # x_dict[dst_type] = x_dict[dst_type] + norm_layer(updates_node)
                 # x_dict[dst_type] = input_process(x_dict[dst_type]) # do not use
-
-        return torch.sigmoid(self.final_layer(x_dict['UE']))
+        return torch.sigmoid(self.final_layer(x_dict['UE']) )
         # return (torch.tanh(self.final_layer(x_dict['UE']) * self.output_scale )+1)/2
         # return F.relu(torch.tanh(self.final_layer(x_dict['UE'])))
         # return torch.exp(-F.softplus(self.final_layer(x_dict['UE'])))
