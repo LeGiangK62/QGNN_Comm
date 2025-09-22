@@ -83,10 +83,15 @@ def message_passing_pqc(strong, twodesign, inits, wires):
     edge, center, neighbor = wires
 
     qml.CRX(inits[0, 0], wires=[neighbor, edge])
-    qml.CRY(inits[0, 1], wires=[edge, neighbor])
+    qml.CRX(inits[0, 1], wires=[edge, neighbor])
+    qml.CRY(inits[0, 2], wires=[neighbor, edge])
+    qml.CRY(inits[0, 3], wires=[edge, neighbor])
+    qml.CRZ(inits[0, 4], wires=[neighbor, edge])
+    qml.CRZ(inits[0, 5], wires=[edge, neighbor])
     # qml.CRZ(inits[0, 2], wires=[neighbor, ancilla2])
     # qml.CRY(inits[0, 3], wires=[edge, ancilla2])
     qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor])
+    qml.StronglyEntanglingLayers(weights=strong[1], wires=[edge, neighbor])
     # qml.StronglyEntanglingLayers(weights=strong[1], wires=[ancilla1, neighbor, ancilla2])
     
 

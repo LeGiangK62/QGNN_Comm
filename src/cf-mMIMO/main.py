@@ -100,8 +100,8 @@ def main(args):
         # 'inits': (1, 4),
         # 'update': (1, args.num_ent_layers, 3, 3), # (1, args.num_ent_layers, 2, 3)
         # NEW
-        'inits': (1, 2), 
-        'strong': (1, args.num_ent_layers, 2, 3), 
+        'inits': (1, 6), 
+        'strong': (2, args.num_ent_layers, 2, 3), 
         'update': (args.graphlet_size, args.num_ent_layers - 1, 5, 3),
         'twodesign': (0, args.num_ent_layers, 1, 2)
     }
