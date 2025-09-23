@@ -158,6 +158,19 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
         qml.expval(qml.PauliZ(W[0]) @ qml.PauliZ(W[2])),
         qml.expval(qml.PauliZ(W[1]) @ qml.PauliZ(W[2]))
     ]
+    
+    # Try this tonight
+    # expval = [
+    #     qml.expval(qml.PauliZ(W[0])),
+    #     qml.expval(qml.PauliX(W[0])),
+    #     qml.expval(qml.PauliY(W[0])),
+    #     qml.expval(qml.PauliZ(W[1])),
+    #     qml.expval(qml.PauliX(W[1])),
+    #     qml.expval(qml.PauliY(W[1])),
+    #     qml.expval(qml.PauliZ(W[2])),
+    #     qml.expval(qml.PauliX(W[2])),
+    #     qml.expval(qml.PauliY(W[2]))
+    # ]
     # expval = [
     #     qml.probs(wires=[center_wire])
     # ]
