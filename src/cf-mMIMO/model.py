@@ -79,7 +79,7 @@ from utils import star_subgraph
 #     return expval
 
 ## Todo: New Approach, Message and Aggregate Seperate
-def message_passing_pqc(strong, twodesign, inits, wires):
+def message_passing_pqc(strong, twodesign, inits, wires, features=None):
     edge, center, neighbor = wires
 
     qml.CRX(inits[0, 0], wires=[neighbor, edge])
@@ -91,6 +91,11 @@ def message_passing_pqc(strong, twodesign, inits, wires):
     # qml.CRZ(inits[0, 2], wires=[neighbor, ancilla2])
     # qml.CRY(inits[0, 3], wires=[edge, ancilla2])
     qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor])
+    
+    if features is not None:
+        qml.RX(features[edge][0], wires=neighbor)
+        qml.RY(features[edge][0], wires=neighbor)
+        
     qml.StronglyEntanglingLayers(weights=strong[1], wires=[edge, neighbor])
     # qml.StronglyEntanglingLayers(weights=strong[1], wires=[ancilla1, neighbor, ancilla2])
     
@@ -116,18 +121,22 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     
     for i in range(num_edges):
         qml.RX(adjacency_matrix[i][0], wires=i)
-        qml.RZ(adjacency_matrix[i][1], wires=i)
+        qml.RY(adjacency_matrix[i][0], wires=i)
+        qml.RX(adjacency_matrix[i][1], wires=i)
+        qml.RY(adjacency_matrix[i][1], wires=i)
         # qml.RX(adjacency_matrix[i][2], wires=i)
     
     for i in range(num_nodes):
         qml.RX(vertex_features[i][0], wires=center_wire+i)
-        qml.RZ(vertex_features[i][1], wires=center_wire+i)
+        qml.RY(vertex_features[i][0], wires=center_wire+i)
+        qml.RX(vertex_features[i][1], wires=center_wire+i)
+        qml.RY(vertex_features[i][1], wires=center_wire+i)
         # qml.RX(vertex_features[i][2], wires=center_wire+i)
     
     
     for i in range(num_edges):
         message_passing_pqc(strong=strong, twodesign=twodesign, inits=inits, 
-                            wires=[i, center_wire, center_wire+i+1])
+                            wires=[i, center_wire, center_wire+i+1], features=vertex_features)
     
     for i in range(num_edges):
         # # No auxiliary
