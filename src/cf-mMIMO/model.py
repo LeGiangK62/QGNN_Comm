@@ -79,7 +79,7 @@ from utils import star_subgraph
 #     return expval
 
 ## Todo: New Approach, Message and Aggregate Seperate
-def message_passing_pqc(strong, twodesign, inits, wires, features=None):
+def message_passing_pqc(strong, twodesign, inits, wires, vertex_features=None, edge_features=None):
     edge, center, neighbor = wires
 
     qml.CRX(inits[0, 0], wires=[neighbor, edge])
@@ -90,11 +90,32 @@ def message_passing_pqc(strong, twodesign, inits, wires, features=None):
     qml.CRZ(inits[0, 5], wires=[edge, neighbor])
     # qml.CRZ(inits[0, 2], wires=[neighbor, ancilla2])
     # qml.CRY(inits[0, 3], wires=[edge, ancilla2])
+    
+    if vertex_features is not None:
+        qml.RX(vertex_features[edge][0], wires=neighbor)
+        # qml.RX(vertex_features[edge][0], wires=neighbor)
+        # qml.RY(vertex_features[edge][1], wires=neighbor)
+        qml.RZ(vertex_features[edge][1], wires=neighbor)
+    
+    if edge_features is not None:
+        qml.RX(edge_features[edge][0], wires=edge)
+        # qml.RX(edge_features[edge][1], wires=edge)
+        # qml.RY(edge_features[edge][0], wires=edge)
+        qml.RZ(edge_features[edge][1], wires=edge)
+        
     qml.StronglyEntanglingLayers(weights=strong[0], wires=[edge, neighbor])
     
-    if features is not None:
-        qml.RX(features[edge][0], wires=neighbor)
-        qml.RY(features[edge][0], wires=neighbor)
+    if vertex_features is not None:
+        qml.RX(vertex_features[edge][0], wires=neighbor)
+        # qml.RX(vertex_features[edge][0], wires=neighbor)
+        # qml.RY(vertex_features[edge][1], wires=neighbor)
+        qml.RZ(vertex_features[edge][1], wires=neighbor)
+    
+    if edge_features is not None:
+        qml.RX(edge_features[edge][0], wires=edge)
+        # qml.RX(edge_features[edge][1], wires=edge)
+        # qml.RY(edge_features[edge][0], wires=edge)
+        qml.RZ(edge_features[edge][1], wires=edge)
         
     qml.StronglyEntanglingLayers(weights=strong[1], wires=[edge, neighbor])
     # qml.StronglyEntanglingLayers(weights=strong[1], wires=[ancilla1, neighbor, ancilla2])
@@ -121,43 +142,47 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     
     for i in range(num_edges):
         qml.RX(adjacency_matrix[i][0], wires=i)
-        qml.RY(adjacency_matrix[i][0], wires=i)
-        qml.RX(adjacency_matrix[i][1], wires=i)
-        qml.RY(adjacency_matrix[i][1], wires=i)
+        # qml.RY(adjacency_matrix[i][0], wires=i)
+        # qml.RX(adjacency_matrix[i][1], wires=i)
+        qml.RZ(adjacency_matrix[i][1], wires=i)
         # qml.RX(adjacency_matrix[i][2], wires=i)
     
     for i in range(num_nodes):
         qml.RX(vertex_features[i][0], wires=center_wire+i)
-        qml.RY(vertex_features[i][0], wires=center_wire+i)
-        qml.RX(vertex_features[i][1], wires=center_wire+i)
-        qml.RY(vertex_features[i][1], wires=center_wire+i)
+        # qml.RY(vertex_features[i][0], wires=center_wire+i)
+        # qml.RX(vertex_features[i][1], wires=center_wire+i)
+        qml.RZ(vertex_features[i][1], wires=center_wire+i)
         # qml.RX(vertex_features[i][2], wires=center_wire+i)
     
     
     for i in range(num_edges):
         message_passing_pqc(strong=strong, twodesign=twodesign, inits=inits, 
-                            wires=[i, center_wire, center_wire+i+1], features=vertex_features)
+                            wires=[i, center_wire, center_wire+i+1], vertex_features=vertex_features,
+                            edge_features=adjacency_matrix)
     
     for i in range(num_edges):
         # # No auxiliary
-        # qml.StronglyEntanglingLayers(weights=update[i],wires=[center_wire, center_wire+i+1])
+        qml.StronglyEntanglingLayers(weights=update[i],wires=[center_wire, center_wire+i+1])
         # 2 qubit auxiliary
-        qml.StronglyEntanglingLayers(weights=update[i],wires=[i, center_wire, center_wire+i+1, num_qbit, num_qbit+1])
+        # qml.StronglyEntanglingLayers(weights=update[i],wires=[i, center_wire, center_wire+i+1, num_qbit, num_qbit+1])
 
     # probs = qml.probs(wires=[center_wire, num_qbit, num_qbit+1])
     # return probs
     # expval = [qml.expval(qml.PauliZ(w)) for w in [center_wire, num_qbit, num_qbit+1]]
-    # expval = [
-    #     qml.expval(qml.PauliZ(center_wire)),
-    #     qml.expval(qml.PauliZ(num_qbit)),
-    #     qml.expval(qml.PauliZ(num_qbit+1)),
-    # ]
-    W = [center_wire, num_qbit, num_qbit+1]
     expval = [
-        qml.expval(qml.PauliZ(W[0]) @ qml.PauliZ(W[1])),
-        qml.expval(qml.PauliZ(W[0]) @ qml.PauliZ(W[2])),
-        qml.expval(qml.PauliZ(W[1]) @ qml.PauliZ(W[2]))
+        qml.expval(qml.PauliX(center_wire)),
+        qml.expval(qml.PauliY(center_wire)),
+        qml.expval(qml.PauliZ(center_wire)),
     ]
+    expval += [
+        qml.probs(wires=[center_wire])
+    ]
+    W = [center_wire, num_qbit, num_qbit+1]
+    # expval = [
+    #     qml.expval(qml.PauliZ(W[0]) @ qml.PauliZ(W[1])),
+    #     qml.expval(qml.PauliZ(W[0]) @ qml.PauliZ(W[2])),
+    #     qml.expval(qml.PauliZ(W[1]) @ qml.PauliZ(W[2]))
+    # ]
     
     # Try this tonight
     # expval = [
@@ -169,10 +194,14 @@ def qgcn_enhance_layer(inputs, spreadlayer, strong, twodesign, inits, update):
     #     qml.expval(qml.PauliY(W[1])),
     #     qml.expval(qml.PauliZ(W[2])),
     #     qml.expval(qml.PauliX(W[2])),
-    #     qml.expval(qml.PauliY(W[2]))
+    #     qml.expval(qml.PauliY(W[2])),
+    #     qml.expval(qml.PauliZ(W[0]) @ qml.PauliZ(W[1])),
+    #     qml.expval(qml.PauliZ(W[0]) @ qml.PauliZ(W[2])),
+    #     qml.expval(qml.PauliZ(W[1]) @ qml.PauliZ(W[2]))
     # ]
+    
     # expval = [
-    #     qml.probs(wires=[center_wire])
+    #     qml.probs(wires=[center_wire, num_qbit, num_qbit+1])
     # ]
     return expval
 
@@ -214,7 +243,7 @@ class QGNN(nn.Module):
         self.pqc_dim = 2 # number of feat per pqc for each node
         self.chunk = 1
         self.final_dim = self.pqc_dim * self.chunk # 2
-        self.pqc_out = 3 # probs?
+        self.pqc_out = 5 # probs?
 
 
         self.input_node = nn.ModuleDict()
@@ -254,7 +283,7 @@ class QGNN(nn.Module):
                 self.qconvs[f"lay{i+1}_{node_type}"] = qml.qnn.TorchLayer(qnode, w_shapes, small_normal_init)
 
                 self.upds[f"lay{i+1}_{node_type}"] = MLP(
-                        [self.pqc_dim + self.pqc_out, self.hidden_dim, self.hidden_dim, self.pqc_dim],
+                        [self.pqc_dim + self.pqc_out, self.hidden_dim*2, self.hidden_dim*2, self.pqc_dim],
                         act='leaky_relu',
                         norm=None,
                         dropout=0.1
@@ -326,6 +355,7 @@ class QGNN(nn.Module):
                     
                     inputs = torch.cat([e_feat, n_feat], dim=0)
                     all_msg = q_layer(inputs.flatten())
+                    all_msg = F.layer_norm(all_msg, all_msg.shape)  
                     aggr = all_msg
                     update_dst = upd_layer(torch.cat([center, aggr], dim=0))
                     updates.append(update_dst)

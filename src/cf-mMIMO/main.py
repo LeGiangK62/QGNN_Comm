@@ -44,6 +44,8 @@ def get_args():
     parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--step_plot', type=int, default=0)
     parser.add_argument('--lr', type=float, default=5e-2)
+    parser.add_argument('--lr_c', type=float, default=5e-2)
+    parser.add_argument('--lr_q', type=float, default=5e-2)
     parser.add_argument('--step_size', type=int, default=5)
     parser.add_argument('--gamma', type=float, default=0.8)
     parser.add_argument('--node_qubit', type=int, default=3)
@@ -87,7 +89,9 @@ def main(args):
     n_qubits = args.node_qubit + edge_qubit
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cpu") 
-    q_dev = qml.device("default.qubit", wires=n_qubits + 2) # number of ancilla qubits
+    n_auxi = 0
+    upd_qubits = 2 + n_auxi
+    q_dev = qml.device("default.qubit", wires=n_qubits + n_auxi) # number of ancilla qubits
     if args.step_plot == 0:
         step_plot = args.epochs // 10 if args.epochs > 10 else 1
             
@@ -102,7 +106,7 @@ def main(args):
         # NEW
         'inits': (1, 6), 
         'strong': (2, args.num_ent_layers, 2, 3), 
-        'update': (args.graphlet_size, args.num_ent_layers - 1, 5, 3),
+        'update': (args.graphlet_size, args.num_ent_layers - 1, upd_qubits, 3),
         'twodesign': (0, args.num_ent_layers, 1, 2)
     }
     
@@ -157,7 +161,7 @@ def main(args):
             hop_neighbor=args.num_gnn_layers,
         )
     elif args.model == 'gnn':
-        from baseline import GNN_Cf
+        # from baseline import GNN_Cf
         # model = GNN_Cf(
         #     node_input_dim=node_input_dim,
         #     edge_input_dim=edge_input_dim,
@@ -174,8 +178,22 @@ def main(args):
         raise NotImplementedError(f"Model {args.model} is not implemented yet.")
 
     model = model.to(device)
+    
+    quantum_params = []
+    classical_params = []
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    for name, param in model.named_parameters():
+        if "qconvs" in name:   # all quantum layers live here
+            quantum_params.append(param)
+        else:
+            classical_params.append(param)
+
+    optimizer = torch.optim.Adam([
+        {"params": classical_params, "lr": args.lr_c},   # bigger step
+        {"params": quantum_params, "lr": args.lr_q}      # smaller step
+    ])
+        
+    # optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
     
       
@@ -213,14 +231,14 @@ def main(args):
         start = time.time()
         for epoch in range(args.epochs):
             # Train the model
-            avg_train_loss = train(model, train_loader, optimizer)
+            avg_train_loss, avg_train_sinr = train(model, train_loader, optimizer)
             avg_test_sinr = test(model, test_loader)
             scheduler.step()
             if args.save_model:
                 # early_stopping(-avg_test_sinr, model)
                 save_checkpoint(model, optimizer, model_save)
-            training_sinr.append(-avg_train_loss)
-            testing_sinr.append(-avg_test_sinr)
+            training_sinr.append(avg_train_sinr)
+            testing_sinr.append(avg_test_sinr)
             numpy.savez_compressed(
                 npz_path, 
                 epoch=numpy.arange(1, epoch+2),

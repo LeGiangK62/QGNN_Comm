@@ -19,4 +19,6 @@ def rate_loss(allocs, directlink_channel_losses, crosslink_channel_losses, test_
     if test_mode:
         return min_rate
     else:
-        return -torch.mean(min_rate)
+        alpha = 0
+        loss = - alpha * torch.mean(torch.mean(rates)) - (1 - alpha) * torch.mean(min_rate)
+        return loss, torch.mean(min_rate)

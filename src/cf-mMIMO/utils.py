@@ -59,6 +59,7 @@ def train(model, train_loader, optimizer):
     model.train()
     total_loss = 0
     total_sample = 0
+    total_sinr = 0
     for data, direct, cross in train_loader:
         bs = data.num_graphs
         M = direct.shape[1]
@@ -67,14 +68,15 @@ def train(model, train_loader, optimizer):
 
         output = model(data.x_dict, data.edge_attr_dict, data.edge_index_dict, data.batch_dict) # .reshape(bs, -1)
         power = output.reshape(bs, M)
-        loss = rate_loss(power, direct, cross)
+        loss, sinr = rate_loss(power, direct, cross, test_mode=False)
         loss.backward()
         optimizer.step()
 
         total_loss += loss.item() * bs
+        total_sinr += sinr.item() * bs
         total_sample += bs
 
-    return total_loss / total_sample
+    return total_loss / total_sample, total_sinr / total_sample
 
 def test(model, test_loader):
     model.eval()
@@ -90,7 +92,8 @@ def test(model, test_loader):
             output = model(data.x_dict, data.edge_attr_dict, data.edge_index_dict, data.batch_dict) # .reshape(bs, -1)
             # output = output.reshape(bs,-1)
             power = output.reshape(bs, M)
-            loss = rate_loss(power, direct, cross)
+            loss = rate_loss(power, direct, cross, test_mode=True)
+            loss = torch.mean(loss)
             # loss.backward()
 
             total_loss += loss.item() * bs
