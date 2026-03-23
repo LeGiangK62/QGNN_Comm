@@ -73,7 +73,7 @@ def np_sum_rate(H,p,alpha,var_noise):
     mask = np.eye(K)
     valid_rx_power = np.sum(np.multiply(rx_power, mask), axis=1)
     interference = np.sum(np.multiply(rx_power, 1 - mask), axis=1) + var_noise
-    rate = np.log(1 + np.divide(valid_rx_power, interference))
+    rate = np.log2(1 + np.divide(valid_rx_power, interference))
     w_rate = np.multiply(alpha,rate)
     sum_rate = np.mean(np.sum(w_rate, axis=1))
     return sum_rate
@@ -103,7 +103,7 @@ def np_sum_rate_all(H,p,alpha,var_noise):
     mask = np.eye(K)
     valid_rx_power = np.sum(np.multiply(rx_power, mask), axis=1)
     interference = np.sum(np.multiply(rx_power, 1 - mask), axis=1) + var_noise
-    rate = np.log(1 + np.divide(valid_rx_power, interference))
+    rate = np.log2(1 + np.divide(valid_rx_power, interference))
     w_rate = np.multiply(alpha,rate)
     sum_rate = np.sum(w_rate, axis=1)
     return sum_rate

@@ -69,7 +69,13 @@ def train(model, train_loader, optimizer, var, pmax):
         weight_sumrates = data.x[:,1].reshape(bs,-1)
         output = model(data.x, data.edge_attr, data.edge_index, data.batch).float() #torch.Size([320, 1])
         output = output.reshape(bs,-1,1) * pmax
-        loss = sum_weighted_rate(channel_matrices, output, weight_sumrates, var)
+
+        # Get raw data
+        all_channel_matrices = get_all_channel(data.x, data.edge_attr, bs)
+
+        loss = sum_weighted_rate(all_channel_matrices, output, weight_sumrates, var)
+
+        # loss = sum_weighted_rate(channel_matrices, output, weight_sumrates, var)
         loss = torch.neg(loss)
 
         loss.backward()
@@ -77,7 +83,7 @@ def train(model, train_loader, optimizer, var, pmax):
 
         with torch.no_grad():
             power_new = output #quantize_output(output)
-            sum_rate = sum_weighted_rate(channel_matrices, power_new, weight_sumrates, var)
+            sum_rate = sum_weighted_rate(all_channel_matrices, power_new, weight_sumrates, var)
         total_rate += sum_rate.item()
         total_loss += loss.item()
         total_graph += data.num_graphs
@@ -99,7 +105,9 @@ def test(model, test_loader, var, pmax):
             weight_sumrates = data.x[:,1].reshape(bs,-1)
             output = model(data.x, data.edge_attr, data.edge_index, data.batch).float() #torch.Size([320, 1])
             output = output.reshape(bs,-1,1) * pmax
-            sum_rate = sum_weighted_rate(channel_matrices, output, weight_sumrates, var)
+            all_channel_matrices = get_all_channel(data.x, data.edge_attr, bs)
+
+            sum_rate = sum_weighted_rate(all_channel_matrices, output, weight_sumrates, var)
             total_rate += sum_rate.item()
             total_graph += data.num_graphs
 
@@ -127,14 +135,39 @@ def test(model, test_loader, var, pmax):
 #     return torch.sum(w_sumrate)
 
 
-def sum_weighted_rate(h, p, w, n0):
+def get_all_channel(x, edge_attr, num_graph):
+    B = num_graph
+    K = x.shape[0]//num_graph
+    direct_channel_matrices = x[:,0].reshape(B, K, -1)
+    edge_attr = edge_attr.reshape(B, K * (K - 1), 1)
+    dev = direct_channel_matrices.device
+    dtype = direct_channel_matrices.dtype
+    all_channel_matrices = torch.empty((B, K, K), dtype=dtype, device=dev)
+    diag_mask = torch.eye(K, dtype=torch.bool, device=dev)
+    all_channel_matrices[:, diag_mask] = direct_channel_matrices.squeeze(-1)
+    all_channel_matrices[:, ~diag_mask] = edge_attr.squeeze(-1)
+
+    return all_channel_matrices
+
+def sum_weighted_rate_incorrect(h, p, w, n0):
     # n0 = 1/10**(n0/10)
     all_signal = torch.square(h.unsqueeze(1) * p)  # shape: (B, N, N)
     des_signal = torch.diagonal(all_signal, dim1=1, dim2=2)
     rx_signal = torch.sum(all_signal, dim=1)
     interference = rx_signal - des_signal + n0
     sinr = des_signal / interference
-    w_sumrate = torch.log2(1 + sinr * w)
+    w_sumrate = torch.log2(1 + sinr) * w # Fix weighted sum rate?
+    return torch.sum(w_sumrate)
+
+
+def sum_weighted_rate(h, p, w, n0):
+    # n0 = 1/10**(n0/10)
+    all_signal = torch.square(h * p)  # shape: (B, N, N)
+    des_signal = torch.diagonal(all_signal, dim1=1, dim2=2)
+    rx_signal = torch.sum(all_signal, dim=1)
+    interference = rx_signal - des_signal + n0
+    sinr = des_signal / interference
+    w_sumrate = torch.log2(1 + sinr) * w # Fix weighted sum rate?
     return torch.sum(w_sumrate)
 
 
@@ -172,3 +205,10 @@ class EarlyStopping:
     def save_checkpoint(self, model):
         torch.save(model.state_dict(), self.save_path)
 
+def smooth(values, weight=0.9):  # weight closer to 1 = smoother
+    smoothed = []
+    last = values[0]
+    for v in values:
+        last = last * weight + v * (1 - weight)
+        smoothed.append(last)
+    return smoothed

@@ -7,7 +7,7 @@ from torch import nn, optim
 import numpy
 
 
-from utils import train, test, EarlyStopping, save_checkpoint
+from utils import train, test, EarlyStopping, save_checkpoint, smooth
 from data import d2dGraphDataset
 from torch_geometric.loader import DataLoader
 from baseline import IGCNet
@@ -77,28 +77,30 @@ def get_args():
 
 
 def main(args):
+    aux_qubit = 1 
     args.node_qubit = args.graphlet_size
     edge_qubit = args.node_qubit - 1
     n_qubits = args.node_qubit + edge_qubit
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cpu") 
-    q_dev = qml.device("default.qubit", wires=n_qubits + 1) # number of ancilla qubits
+    q_dev = qml.device("default.qubit", wires=n_qubits + aux_qubit) # number of ancilla qubits
+    print(f'Quantum device: {n_qubits} qubit - {q_dev}')
     if args.step_plot == 0:
         step_plot = args.epochs // 10 if args.epochs > 10 else 1
             
     # PQC weight shape settings
     w_shapes_dict = {
-        'spreadlayer': (0, n_qubits, 1),
+        # 'spreadlayer': (0, n_qubits, 1),
         # OLD
         # 'strong': (2, args.num_ent_layers, 3, 3), # 3
         # 'inits': (1, 4),
         # 'update': (args.graphlet_size, args.num_ent_layers, 3, 3), # (1, args.num_ent_layers, 2, 3)
         # NEW
-        'inits': (1, 2), 
-        'strong': (1, args.num_ent_layers, 2, 3), 
-        'update': (args.graphlet_size, args.num_ent_layers, 3, 3),
+        'inits': (args.num_ent_layers, 4), 
+        'strong': (args.num_ent_layers, 4), 
+        'update': (edge_qubit, args.num_ent_layers, 2 + aux_qubit, 3), 
         # 'update': (1, args.num_ent_layers, 3, 3), # (1, args.num_ent_layers, 2, 3)
-        'twodesign': (0, args.num_ent_layers, 1, 2)
+        # 'twodesign': (0, args.num_ent_layers, 1, 2)
     }
     
     result_base = f"{timestamp}_{args.model}_{args.graphlet_size}_{args.epochs}_{args.lr}_D2D"
@@ -146,7 +148,17 @@ def main(args):
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
-   
+    # scheduler1 = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
+    # scheduler2 = torch.optim.lr_scheduler.StepLR(
+    #     optimizer, step_size=5, gamma=0.5  # more aggressive after epoch 80
+    # )
+    # scheduler2 = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=0.01, total_iters=999)
+
+    # scheduler = torch.optim.lr_scheduler.SequentialLR(
+    #     optimizer,
+    #     schedulers=[scheduler1, scheduler2],
+    #     milestones=[100]
+    # )
     # Training and Tesing preparetion
     training_sinr = []
     testing_sinr = []
@@ -172,9 +184,17 @@ def main(args):
             print(f"Continuing training model with {args.graphlet_size} graphlet size with {args.epochs} epochs, "
             f"learning rate {args.lr}, step size {args.step_size}, and gamma {args.gamma}.")
     else: 
+        total_wmmse = 0
+        # total_fp = 0
+        num_batch = 0
+        for data in train_loader:
+            total_wmmse += numpy.sum(data.y[:,0].detach().numpy())
+            # total_fp += numpy.sum(data.y[:,1].detach().numpy())
+            num_batch += data.num_graphs
+        train_wmmse = total_wmmse/num_batch
         print(f"Training model with {args.graphlet_size} graphlet size with {args.epochs} epochs, "
             f"learning rate {args.lr}, step size {args.step_size}, and gamma {args.gamma}.")
-  
+        print(f'Benchmark: {train_wmmse:.4f}')
     
     if args.continue_train or args.pre_train is None:
         model.train()   
@@ -211,14 +231,6 @@ def main(args):
     
     
     if args.plot:    
-        total_wmmse = 0
-        # total_fp = 0
-        num_batch = 0
-        for data in train_loader:
-            total_wmmse += numpy.sum(data.y[:,0].detach().numpy())
-            # total_fp += numpy.sum(data.y[:,1].detach().numpy())
-            num_batch += data.num_graphs
-        train_wmmse = total_wmmse/num_batch
         # train_fp = total_fp/num_batch
 
         total_wmmse = 0
@@ -260,6 +272,12 @@ def main(args):
 
         plt.figure(figsize=(10, 6))
         # QGNN
+
+        training_sinr = smooth(training_sinr, weight=0.85)
+        testing_sinr = smooth(testing_sinr, weight=0.85)
+        training_sinr_gnn = smooth(training_sinr_gnn, weight=0.85)
+        testing_sinr_gnn = smooth(testing_sinr_gnn, weight=0.85)
+
         plt.plot(range(1, total_epoch + 1), training_sinr,
                 label=f'Training Sum-Rate - QGNN', markevery=step_plot,
                 marker='o', linewidth=1.8, color='tab:blue')
@@ -415,3 +433,7 @@ def main(args):
 if __name__ == "__main__":
     args = get_args()
     main(args)
+    print('Graphlet 4 is enoguh (compared to 5 and 6) is super long')
+    print('Try 1 auxilari bit only')
+    print("Read more from PQC")
+    print("Only sigmoid output")

@@ -48,6 +48,8 @@ class d2dGraphDataset(Dataset):
             # [i, j] for i in range(self.num_D2D) for j in range(i+1, self.num_D2D)
         ], dtype=torch.long).T  # shape: [2, num_edges]
 
+        # edge_index = torch.tensor([[i, j] for i in range(self.num_D2D) for j in range(self.num_D2D) if i != j], dtype=torch.long).T 
+
         # H = torch.tensor(H, dtype=torch.float32)
         edge_attr = torch.tensor(H[edge_index[0], edge_index[1]][:, None], dtype=torch.float32)
         # edge_attr = torch.cat([H[edge_index[0], edge_index[1]][:, None], H[edge_index[1], edge_index[0]][:, None]], dim=-1)
