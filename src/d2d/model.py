@@ -125,7 +125,7 @@ def qgcn_enhance_layer(inputs, strong, inits, update):
             wires=[edge_w, center_wire, neighbor_w]
         )
 
-    # 4) Update
+    # 4) Aggregate
     for i in range(num_edges):
         neighbor_w = node_start + i + 1
         u_wires = [center_wire, neighbor_w, aux_start] #, aux_start + 1]
