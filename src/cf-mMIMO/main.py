@@ -1,3 +1,11 @@
+'''
+This file training heterogenous QGNN (batched) for uplink max-min cf-mMIMO
+
+python main.py --train_size 500 --test_size 200 --eval_size 500 --graphlet_size 5 --plot --results
+
+'''
+
+
 import os
 import torch
 import matplotlib.pyplot as plt
@@ -13,7 +21,8 @@ from utils import train, test, EarlyStopping, save_checkpoint
 from comm_utils import normalize_data, rate_loss
 from data import cfGraphDataset, load_cf_dataset, cfHetGraphDataset
 
-from model import QGNN
+# from model import QGNN
+from cf_model import QGNN_UL as QGNN
 from baseline import RGCN
 
 from datetime import datetime
@@ -84,30 +93,43 @@ def get_args():
 
 
 def main(args):
+    aux_qubit = 1 
     args.node_qubit = args.graphlet_size
     edge_qubit = args.node_qubit - 1
     n_qubits = args.node_qubit + edge_qubit
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device("cpu") 
-    n_auxi = 0
-    upd_qubits = 2 + n_auxi
-    q_dev = qml.device("default.qubit", wires=n_qubits + n_auxi) # number of ancilla qubits
+    q_dev = qml.device("default.qubit", wires=n_qubits + aux_qubit) # number of ancilla qubits
+    print(f'Quantum device: {n_qubits} qubit - {q_dev}')
+
+
+    # args.node_qubit = args.graphlet_size
+    # edge_qubit = args.node_qubit - 1
+    # n_qubits = args.node_qubit + edge_qubit
+    # # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cpu") 
+    # n_auxi = 0
+    # upd_qubits = 2 + n_auxi
+    # q_dev = qml.device("default.qubit", wires=n_qubits + n_auxi) # number of ancilla qubits
     if args.step_plot == 0:
         step_plot = args.epochs // 10 if args.epochs > 10 else 1
             
     # PQC weight shape settings
     w_shapes_dict = {
-        'spreadlayer': (0, n_qubits, 1),
+        # 'spreadlayer': (0, n_qubits, 1),
         # OLD
         # 'strong': (3, args.num_ent_layers, 2, 3), # 2
         # 'strong': (2, args.num_ent_layers, 3, 3), # 3
         # 'inits': (1, 4),
         # 'update': (1, args.num_ent_layers, 3, 3), # (1, args.num_ent_layers, 2, 3)
         # NEW
-        'inits': (1, 6), 
-        'strong': (2, args.num_ent_layers, 2, 3), 
-        'update': (args.graphlet_size, args.num_ent_layers - 1, upd_qubits, 3),
-        'twodesign': (0, args.num_ent_layers, 1, 2)
+        # 'inits': (1, 6), 
+        # 'strong': (2, args.num_ent_layers, 2, 3), 
+        # 'update': (args.graphlet_size, args.num_ent_layers - 1, upd_qubits, 3),
+        'inits': (args.num_ent_layers, 4), 
+        'strong': (args.num_ent_layers, 4), 
+        'update': (edge_qubit, args.num_ent_layers, 2 + aux_qubit, 3), 
+        # 'twodesign': (0, args.num_ent_layers, 1, 2)
     }
     
     result_base = f"{timestamp}_{args.model}_{args.graphlet_size}_{args.epochs}_{args.lr}_CF"
@@ -125,6 +147,7 @@ def main(args):
     train_dataset = cfHetGraphDataset(norm_train_losses, direct_train, cross_train, (train_K, train_M))
     test_dataset = cfHetGraphDataset(norm_test_losses, direct_test, cross_test, (test_K, test_M))
 
+    print("Optimal solution:", opt_rate.mean())
     # if task_type != 'graph':
     #     raise NotImplementedError("Node classification support is not implemented yet.")
  
