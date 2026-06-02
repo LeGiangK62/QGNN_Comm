@@ -359,18 +359,21 @@ if __name__ == '__main__':
             train_loss = train_sumrate_homo(
                 epoch / (2 * num_epochs_cen // 3),
                 train_loader, c_model, c_optimizer,
-                tau=tau, rho_p=rho_p, rho_d=rho_d, num_antenna=num_antenna
+                tau=tau, rho_p=rho_p, rho_d=rho_d, num_antenna=num_antenna,
+                device=device
             )
 
             c_model.eval()
             with torch.no_grad():
                 train_eval = eval_sumrate_homo(
                     train_loader, c_model,
-                    tau=tau, rho_p=rho_p, rho_d=rho_d, num_antenna=num_antenna
+                    tau=tau, rho_p=rho_p, rho_d=rho_d, num_antenna=num_antenna,
+                    device=device
                 )
                 test_eval = eval_sumrate_homo(
                     test_loader, c_model,
-                    tau=tau, rho_p=rho_p, rho_d=rho_d, num_antenna=num_antenna
+                    tau=tau, rho_p=rho_p, rho_d=rho_d, num_antenna=num_antenna,
+                    device=device
                 )
             all_rate.append(train_eval)
             all_rate_test.append(test_eval)
@@ -424,15 +427,20 @@ if __name__ == '__main__':
                 eval_mode=True
             )
 
-            # # QGNN (placeholder: assumes same interface as cen_model after user updates)
-            # q_x_dict, q_edge_dict, q_edge_index = qgnn_model(batch)
+            # QGNN (placeholder: assumes same interface as cen_model after user updates)
+            q_x_dict, q_edge_dict, q_edge_index = qgnn_model(batch)
             # qgnn_rates, _ = loss_function_sumrate_homo(
             #     batch, q_x_dict, q_edge_dict,
             #     tau=tau, rho_p=rho_p, rho_d=rho_d, num_antenna=num_antenna,
             #     eval_mode=True
             # )
 
-        # qgnn_rates = qgnn_rates.detach().cpu().numpy()
+            qgnn_rates = loss_function_sumrate_homo(
+                batch, q_x_dict,
+                tau=tau, rho_p=rho_p, rho_d=rho_d, num_antenna=num_antenna,
+            )
+
+        qgnn_rates = qgnn_rates.detach().cpu().numpy()
 
         gnn_rates = gnn_rates.detach().cpu().numpy()
         all_one_rates = all_one_rates.detach().cpu().numpy()
@@ -440,7 +448,7 @@ if __name__ == '__main__':
         rates_frac = rates_frac_solutions[eval_idx]
         rates_log = rates_log_solutions[eval_idx]
 
-        qgnn_rates = all_one_rates
+        # qgnn_rates = all_one_rates
 
         max_value = np.ceil(
             max(np.max(all_one_rates), np.max(qgnn_rates), np.max(gnn_rates),
@@ -470,7 +478,7 @@ if __name__ == '__main__':
 
         plt.figure(figsize=(6, 4), dpi=180)
         plt.plot(gnn_rates, y_axis, label='Centralized GNN', linewidth=2)
-        # plt.plot(qgnn_rates, y_axis, label='QGNN', linewidth=2)
+        plt.plot(qgnn_rates, y_axis, label='QGNN', linewidth=2)
         plt.plot(rates_equal, y_axis, label='Equal Power', linewidth=2)
         plt.plot(rates_log, y_axis, label='Log Approx.', linewidth=2)
         plt.xlabel('Sum rate [bps/Hz]', {'fontsize': 16})
